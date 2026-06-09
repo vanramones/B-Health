@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Brgy Health Center Digital System</string>
+    <string name="title_activity_main">Brgy Health Center Digital System</string>
+    <string name="package_name">com.van.brgyhealthcenter</string>
+    <string name="custom_url_scheme">com.van.brgyhealthcenter</string>
+</resources>

@@ -1,0 +1,21 @@
+{
+  "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/cli": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@tailwindcss/vite": "^4.2.2",
+    "firebase": "^12.14.0",
+    "tailwindcss": "^4.2.2"
+  },
+  "name": "b_health_admin",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
+}
