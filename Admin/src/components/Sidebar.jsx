@@ -1,8 +1,8 @@
 import React from 'react';
 import { Badge } from 'react-bootstrap';
 import {
-  LayoutDashboard, Calendar, Users, FileText, Heart, HeartPulse,
-  Syringe, Bell, Megaphone, Phone, BarChart3, Settings, Plus,
+  LayoutDashboard, Calendar, FileText, Heart, HeartPulse,
+  Bell, Megaphone, Phone, BarChart3, Settings, Plus,
   LogOut, ShieldCheck, UserCog, Trash2, ChevronRight,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -14,7 +14,6 @@ const navGroups = [
     items: [
       { icon: LayoutDashboard, label: 'Dashboard',        path: '/admin/dashboard' },
       { icon: Calendar,        label: 'Appointments',     path: '/admin/appointments' },
-      { icon: Users,           label: 'Residents',        path: '/admin/residents' },
       { icon: UserCog,         label: 'Registered Users', path: '/admin/registered-users' },
       { icon: FileText,        label: 'Health Records',   path: '/admin/health-records' },
     ],
@@ -22,8 +21,7 @@ const navGroups = [
   {
     label: 'SERVICES',
     items: [
-      { icon: Heart,   label: 'Services',    path: '/admin/services' },
-      { icon: Syringe, label: 'Vaccination', path: '/admin/vaccination' },
+      { icon: Heart, label: 'Services', path: '/admin/services' },
     ],
   },
   {
