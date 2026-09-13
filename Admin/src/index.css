@@ -257,7 +257,8 @@ p {
 /* ===== Report Date Card ===== */
 .bh-report-date-card {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
+  z-index: 10;
 }
 .bh-report-date-card::before {
   content: '';
