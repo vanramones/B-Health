@@ -273,63 +273,40 @@ const Header = ({ title, onMenuClick }) => {
       className="px-3 px-lg-4 flex-shrink-0"
       style={{
         height: 60,
-        borderBottom: '1px solid #ccfbf1',
-        boxShadow: '0 1px 4px rgba(15, 118, 110, 0.04)',
+        borderBottom: '1px solid #f1f5f9',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.03)',
       }}
     >
       <div className="d-flex align-items-center gap-2 gap-lg-3">
-        {/* Mobile menu button */}
-        <Button
-          variant="light"
-          size="sm"
-          className="d-lg-none border-0 p-2 rounded-3"
-          style={{ backgroundColor: '#f0fdfa' }}
-          onClick={onMenuClick}
-        >
-          <Menu size={20} color="#0d9488" />
+        <Button variant="light" size="sm" className="d-lg-none border-0 p-2 rounded-3"
+          style={{ backgroundColor: '#f1f5f9' }} onClick={onMenuClick}>
+          <Menu size={20} color="#64748b" />
         </Button>
 
-        <Navbar.Brand className="fw-bold mb-0 d-flex align-items-center gap-2" style={{ fontSize: 16, color: '#0f766e' }}>
-          <span
-            className="d-none d-sm-flex align-items-center justify-content-center rounded-2"
-            style={{ width: 28, height: 28, backgroundColor: '#ccfbf1', color: '#0f766e' }}
-          >
+        <Navbar.Brand className="fw-bold mb-0 d-flex align-items-center gap-2" style={{ fontSize: 15, color: '#0f172a' }}>
+          <span className="d-none d-sm-flex align-items-center justify-content-center rounded-2"
+            style={{ width: 28, height: 28, backgroundColor: '#f0fdf4', color: '#10b981' }}>
             <Stethoscope size={15} strokeWidth={2.5} />
           </span>
-          <span style={{ color: '#111827' }}>{title}</span>
+          <span>{title}</span>
         </Navbar.Brand>
 
-        {/* Clinic pill */}
-        <span
-          className="d-none d-xl-inline-flex align-items-center gap-1"
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: '#0f766e',
-            backgroundColor: '#f0fdfa',
-            border: '1px solid #99f6e4',
-            padding: '4px 10px',
-            borderRadius: 999,
-          }}
-        >
+        <span className="d-none d-xl-inline-flex align-items-center gap-1"
+          style={{ fontSize: 11, fontWeight: 500, color: '#64748b', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '4px 10px', borderRadius: 999 }}>
           <MapPin size={11} /> Brgy. Health Center
         </span>
       </div>
 
       <div className="d-flex align-items-center gap-2 ms-auto">
-        {/* Search - hide on mobile */}
-        <div className="d-none d-md-flex position-relative" ref={searchRef} style={{ width: 350 }}>
+        <div className="d-none d-md-flex position-relative" ref={searchRef} style={{ width: 300 }}>
           <InputGroup size="sm">
-            <InputGroup.Text
-              className="border-end-0"
-              style={{ borderColor: '#ccfbf1', backgroundColor: '#f0fdfa' }}
-            >
-              <Search size={14} color="#0d9488" />
+            <InputGroup.Text className="border-end-0"
+              style={{ borderColor: '#e2e8f0', backgroundColor: '#f8fafc' }}>
+              <Search size={14} color="#94a3b8" />
             </InputGroup.Text>
-            <Form.Control
-              placeholder="Search users, appointments..."
+            <Form.Control placeholder="Search users, appointments..."
               className="border-start-0"
-              style={{ borderColor: '#ccfbf1', backgroundColor: '#f0fdfa', fontSize: 13 }}
+              style={{ borderColor: '#e2e8f0', backgroundColor: '#f8fafc', fontSize: 13, color: '#334155' }}
               value={searchQuery}
               onChange={(e) => handleSearch(e.target.value)}
               onFocus={() => searchQuery && setShowSearchResults(true)}

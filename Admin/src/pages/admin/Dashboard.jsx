@@ -8,10 +8,8 @@ import {
   Users, Calendar, CheckCircle, Target, CheckSquare,
   FileText, Megaphone, Syringe, BarChart3, UserPlus,
   Phone, AlertTriangle, User, Edit3, Clock, ChevronRight,
-  Heart, Activity, Bell, UserCog,
+  Heart, Activity, Bell, UserCog, ArrowUpRight,
 } from 'lucide-react';
-import StatCard from '../../components/StatCard';
-import ActivityItem from '../../components/ActivityItem';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -21,7 +19,7 @@ const healthProgramsData = [
   { name: 'Maternal Care', value: 45, color: '#ec4899' },
   { name: 'Child Health',  value: 32, color: '#3b82f6' },
   { name: 'Senior Care',   value: 28, color: '#f97316' },
-  { name: 'General',       value: 65, color: '#22c55e' },
+  { name: 'General',       value: 65, color: '#10b981' },
 ];
 
 const healthAlerts = [
@@ -44,15 +42,40 @@ function initials(name) {
   return (name || '').split(' ').filter(Boolean).map((p) => p[0]).slice(0, 2).join('').toUpperCase() || '?';
 }
 
+/* ── Custom chart tooltip ── */
+const ChartTip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '10px 14px', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#111827', marginBottom: 4 }}>{label}</div>
+      {payload.map((p, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#6b7280' }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: p.color, display: 'inline-block' }} />
+          {p.dataKey}: <span style={{ fontWeight: 600, color: '#111827' }}>{p.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ── Stat card data config ── */
+const statConfigs = [
+  { key: 'users',        icon: UserCog,    label: 'Registered Users', path: '/admin/registered-users', gradient: 'linear-gradient(135deg, #dbeafe, #eff6ff)', color: '#2563eb', iconBg: '#2563eb' },
+  { key: 'residents',    icon: Users,      label: 'Residents',        path: '/admin/residents',        gradient: 'linear-gradient(135deg, #cffafe, #ecfeff)', color: '#0891b2', iconBg: '#0891b2' },
+  { key: 'appointments', icon: Calendar,   label: 'Appointments',     path: '/admin/appointments',     gradient: 'linear-gradient(135deg, #ffedd5, #fff7ed)', color: '#ea580c', iconBg: '#ea580c' },
+  { key: 'records',      icon: CheckCircle,label: 'Health Records',   path: '/admin/health-records',   gradient: 'linear-gradient(135deg, #dcfce7, #f0fdf4)', color: '#16a34a', iconBg: '#16a34a' },
+  { key: 'vaccinations', icon: Target,     label: 'Vaccinations',     path: '/admin/vaccination',      gradient: 'linear-gradient(135deg, #f3e8ff, #faf5ff)', color: '#9333ea', iconBg: '#9333ea' },
+];
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const today    = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  const [stats, setStats]           = useState({ residents: 0, appointments: 0, records: 0, vaccinations: 0, users: 0 });
-  const [todayAppts, setTodayAppts] = useState([]);
+  const [stats, setStats]             = useState({ residents: 0, appointments: 0, records: 0, vaccinations: 0, users: 0 });
+  const [todayAppts, setTodayAppts]   = useState([]);
   const [recentUsers, setRecentUsers] = useState([]);
-  const [chartData, setChartData]   = useState([
+  const [chartData, setChartData]     = useState([
     { day: 'Mon', Pending: 0, Confirmed: 0 },
     { day: 'Tue', Pending: 0, Confirmed: 0 },
     { day: 'Wed', Pending: 0, Confirmed: 0 },
@@ -103,111 +126,115 @@ const Dashboard = () => {
 
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
 
-  // ── Socket.io ──
   useEffect(() => {
     socket.on('dashboard-update', () => loadDashboard());
     return () => socket.off('dashboard-update');
   }, [loadDashboard]);
 
-  // ── Supabase Realtime — lahat ng tables na nagbabago ang dashboard ──
   useEffect(() => {
     const tables = ['appointments', 'residents', 'health_records', 'vaccinations', 'users'];
-
     const channels = tables.map((table) =>
-      supabase
-        .channel(`dashboard-${table}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table }, () => {
-          loadDashboard();
-        })
+      supabase.channel(`dashboard-${table}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table }, () => loadDashboard())
         .subscribe()
     );
-
     return () => channels.forEach((ch) => supabase.removeChannel(ch));
   }, [loadDashboard]);
 
   const alertColors = {
-    warning: { bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
-    info:    { bg: '#dbeafe', color: '#1d4ed8', border: '#93c5fd' },
-    danger:  { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
+    warning: { bg: '#fffbeb', color: '#92400e', border: '#fde68a' },
+    info:    { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' },
+    danger:  { bg: '#fef2f2', color: '#991b1b', border: '#fecaca' },
   };
 
   return (
-    <div className="p-3 p-md-4" style={{ backgroundColor: '#f1f5f9' }}>
-      {/* Welcome Header */}
+    <div className="p-3 p-md-4" style={{ backgroundColor: '#f8fafc', minHeight: '100vh' }}>
+      {/* ── Welcome Header ── */}
       <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4">
         <div>
-          <h4 className="fw-bold mb-1" style={{ color: '#0f172a', letterSpacing: '-0.02em' }}>Welcome back! 👋</h4>
-          <p className="mb-0" style={{ fontSize: 13, color: '#64748b' }}>{today}</p>
+          <h4 className="fw-bold mb-1" style={{ color: '#0f172a', fontSize: 22, letterSpacing: '-0.02em' }}>Dashboard</h4>
+          <p className="mb-0" style={{ fontSize: 13, color: '#94a3b8' }}>{today}</p>
         </div>
         <div className="d-flex gap-2 mt-2 mt-md-0">
-          <Button size="sm" variant="light" className="d-flex align-items-center gap-1 border-0" style={{ fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} onClick={() => navigate('/admin/reports')}>
-            <BarChart3 size={14} /> View Reports
+          <Button size="sm" variant="light" className="d-flex align-items-center gap-1 border"
+            style={{ fontSize: 12, fontWeight: 500, borderColor: '#e2e8f0' }}
+            onClick={() => navigate('/admin/reports')}>
+            <BarChart3 size={14} /> Reports
           </Button>
-          <Button size="sm" className="d-flex align-items-center gap-1 border-0" style={{ background: 'linear-gradient(135deg, #0ea5e9, #0f766e)', fontSize: 12, fontWeight: 600, boxShadow: '0 4px 12px rgba(14, 165, 233, 0.25)' }} onClick={() => navigate('/admin/appointments')}>
+          <Button size="sm" className="d-flex align-items-center gap-1 border-0"
+            style={{ background: 'linear-gradient(135deg, #10b981, #059669)', fontSize: 12, fontWeight: 600, boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)' }}
+            onClick={() => navigate('/admin/appointments')}>
             <Calendar size={14} /> New Appointment
           </Button>
         </div>
       </div>
 
-      {/* Stat Cards */}
-      <Row className="g-2 g-md-3 mb-4 bh-stagger">
-        <Col xs={6} lg>
-          <div className="bh-card-hover h-100" onClick={() => navigate('/admin/registered-users')} style={{ cursor: 'pointer' }}>
-            <StatCard icon={<UserCog size={20} color="#1d4ed8" />} iconBg="bg-blue-50" value={String(stats.users)} title="Registered Users" trend="system accounts" trendColor="text-blue-500" />
-          </div>
-        </Col>
-        <Col xs={6} lg>
-          <div className="bh-card-hover h-100" onClick={() => navigate('/admin/residents')} style={{ cursor: 'pointer' }}>
-            <StatCard icon={<Users size={20} color="#0891b2" />} iconBg="bg-cyan-50" value={String(stats.residents)} title="Residents" trend="health records" trendColor="text-cyan-500" />
-          </div>
-        </Col>
-        <Col xs={6} lg>
-          <div className="bh-card-hover h-100" onClick={() => navigate('/admin/appointments')} style={{ cursor: 'pointer' }}>
-            <StatCard icon={<Calendar size={20} color="#f97316" />} iconBg="bg-orange-50" value={String(stats.appointments)} title="Appointments" trend="all time" trendColor="text-orange-500" />
-          </div>
-        </Col>
-        <Col xs={6} lg>
-          <div className="bh-card-hover h-100" onClick={() => navigate('/admin/health-records')} style={{ cursor: 'pointer' }}>
-            <StatCard icon={<CheckCircle size={20} color="#22c55e" />} iconBg="bg-green-50" value={String(stats.records)} title="Health Records" trend="all time" trendColor="text-green-500" />
-          </div>
-        </Col>
-        <Col xs={6} lg>
-          <div className="bh-card-hover h-100" onClick={() => navigate('/admin/vaccinations')} style={{ cursor: 'pointer' }}>
-            <StatCard icon={<Target size={20} color="#a855f7" />} iconBg="bg-purple-50" value={String(stats.vaccinations)} title="Vaccinations" trend="all time" trendColor="text-purple-500" />
-          </div>
-        </Col>
+      {/* ── Stat Cards ── */}
+      <Row className="g-3 mb-4 bh-stagger">
+        {statConfigs.map((sc) => {
+          const Icon = sc.icon;
+          const val = stats[sc.key] ?? 0;
+          return (
+            <Col key={sc.key} xs={6} lg>
+              <Card className="border-0 rounded-4 h-100 bh-card-hover"
+                onClick={() => navigate(sc.path)}
+                style={{ cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', transition: 'all 0.2s ease' }}>
+                <Card.Body className="p-3 p-lg-4">
+                  <div className="d-flex align-items-center justify-content-between mb-3">
+                    <div className="d-flex align-items-center justify-content-center rounded-3"
+                      style={{ width: 42, height: 42, background: sc.gradient }}>
+                      <Icon size={20} color={sc.color} />
+                    </div>
+                    <ArrowUpRight size={16} color="#cbd5e1" />
+                  </div>
+                  <div className="fw-bold" style={{ fontSize: 28, color: '#0f172a', lineHeight: 1, letterSpacing: '-0.03em' }}>
+                    {val.toLocaleString()}
+                  </div>
+                  <div className="mt-1" style={{ fontSize: 12, color: '#94a3b8', fontWeight: 500 }}>{sc.label}</div>
+                </Card.Body>
+              </Card>
+            </Col>
+          );
+        })}
       </Row>
 
-      {/* Chart + Recent Registrations */}
-      <Row className="g-2 g-md-3">
+      {/* ── Chart + Recent Registrations ── */}
+      <Row className="g-3">
         <Col xs={12} lg={8}>
-          <Card className="border rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 6px 20px rgba(0,0,0,0.08)', animationDelay: '0.2s' }}>
+          <Card className="border-0 rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
             <Card.Body className="p-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <span className="fw-bold" style={{ fontSize: 14, color: '#111827' }}>Appointment Overview</span>
-                <div className="d-flex align-items-center gap-3" style={{ fontSize: 11, color: '#6b7280', fontWeight: 500 }}>
-                  <span className="d-flex align-items-center gap-1"><span className="rounded-circle d-inline-block" style={{ width: 8, height: 8, backgroundColor: '#f97316' }}></span>Pending</span>
-                  <span className="d-flex align-items-center gap-1"><span className="rounded-circle d-inline-block" style={{ width: 8, height: 8, backgroundColor: '#22c55e' }}></span>Confirmed</span>
+                <div>
+                  <span className="fw-bold" style={{ fontSize: 15, color: '#0f172a' }}>Appointment Overview</span>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>This week's summary</div>
+                </div>
+                <div className="d-flex align-items-center gap-3" style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>
+                  <span className="d-flex align-items-center gap-1">
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />Pending
+                  </span>
+                  <span className="d-flex align-items-center gap-1">
+                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />Confirmed
+                  </span>
                 </div>
               </div>
-              <ResponsiveContainer width="100%" height={230}>
+              <ResponsiveContainer width="100%" height={240}>
                 <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="gApproved" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
+                    <linearGradient id="gPending" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="gCompleted" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.15} />
-                      <stop offset="95%" stopColor="#60a5fa" stopOpacity={0} />
+                    <linearGradient id="gConfirmed" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
-                  <Area type="monotone" dataKey="Pending"   stroke="#f97316" strokeWidth={2} fill="url(#gApproved)"  dot={false} />
-                  <Area type="monotone" dataKey="Confirmed" stroke="#22c55e" strokeWidth={2} fill="url(#gCompleted)" dot={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTip />} />
+                  <Area type="monotone" dataKey="Pending"   stroke="#f59e0b" strokeWidth={2.5} fill="url(#gPending)"   dot={{ r: 3, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }} />
+                  <Area type="monotone" dataKey="Confirmed" stroke="#10b981" strokeWidth={2.5} fill="url(#gConfirmed)" dot={{ r: 3, fill: '#10b981', stroke: '#fff', strokeWidth: 2 }} />
                 </AreaChart>
               </ResponsiveContainer>
             </Card.Body>
@@ -215,51 +242,81 @@ const Dashboard = () => {
         </Col>
 
         <Col xs={12} lg={4}>
-          <Card className="border rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 6px 20px rgba(0,0,0,0.08)', animationDelay: '0.25s' }}>
+          <Card className="border-0 rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
             <Card.Body className="p-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <span className="fw-bold" style={{ fontSize: 14, color: '#111827' }}>Recent Registrations</span>
-                <Button size="sm" variant="link" className="p-0 text-decoration-none d-flex align-items-center gap-1" style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 500 }} onClick={() => navigate('/admin/registered-users')}>
-                  View All <ChevronRight size={14} />
+                <div>
+                  <span className="fw-bold" style={{ fontSize: 15, color: '#0f172a' }}>Recent Registrations</span>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Latest user sign-ups</div>
+                </div>
+                <Button size="sm" variant="link" className="p-0 text-decoration-none d-flex align-items-center gap-1"
+                  style={{ fontSize: 11, color: '#10b981', fontWeight: 600 }} onClick={() => navigate('/admin/registered-users')}>
+                  View All <ChevronRight size={13} />
                 </Button>
               </div>
               {recentUsers.length === 0 ? (
-                <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: '16px 0' }}>No registered users yet.</div>
-              ) : recentUsers.map((u) => (
-                <ActivityItem key={u.id} icon={<User size={16} />} title={u.full_name} subtitle={`@${u.username} · ${u.purok || '—'}`} time={timeAgo(u.created_at)} iconBg="bg-blue-100 text-blue-600" />
-              ))}
+                <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>No registered users yet.</div>
+              ) : (
+                <div className="d-flex flex-column gap-2">
+                  {recentUsers.map((u) => (
+                    <div key={u.id} className="d-flex align-items-center gap-3 p-2 rounded-3"
+                      style={{ transition: 'background 0.15s' }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#f8fafc'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}>
+                      <div className="d-flex align-items-center justify-content-center rounded-circle text-white fw-bold flex-shrink-0"
+                        style={{ width: 34, height: 34, background: 'linear-gradient(135deg, #3b82f6, #2563eb)', fontSize: 11 }}>
+                        {initials(u.full_name)}
+                      </div>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div className="fw-semibold text-truncate" style={{ fontSize: 13, color: '#0f172a' }}>{u.full_name}</div>
+                        <div className="text-truncate" style={{ fontSize: 11, color: '#94a3b8' }}>@{u.username}</div>
+                      </div>
+                      <span style={{ fontSize: 10, color: '#94a3b8', whiteSpace: 'nowrap' }}>{timeAgo(u.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card.Body>
           </Card>
         </Col>
       </Row>
 
-      {/* Second Row */}
-      <Row className="g-2 g-md-3 mt-1">
+      {/* ── Second Row ── */}
+      <Row className="g-3 mt-1">
         <Col xs={12} lg={5}>
-          <Card className="border rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 6px 20px rgba(0,0,0,0.08)', animationDelay: '0.3s' }}>
+          <Card className="border-0 rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
             <Card.Body className="p-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <span className="fw-bold" style={{ fontSize: 14, color: '#111827' }}><Calendar size={16} className="me-2" style={{ color: '#0f766e' }} />Today's Appointments</span>
-                <Button size="sm" variant="link" className="p-0 text-decoration-none d-flex align-items-center gap-1" style={{ fontSize: 12, color: '#0f766e', fontWeight: 500 }} onClick={() => navigate('/admin/appointments')}>
-                  View All <ChevronRight size={14} />
+                <div>
+                  <span className="fw-bold" style={{ fontSize: 15, color: '#0f172a' }}>Today's Appointments</span>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>{todayAppts.length} scheduled today</div>
+                </div>
+                <Button size="sm" variant="link" className="p-0 text-decoration-none d-flex align-items-center gap-1"
+                  style={{ fontSize: 11, color: '#10b981', fontWeight: 600 }} onClick={() => navigate('/admin/appointments')}>
+                  View All <ChevronRight size={13} />
                 </Button>
               </div>
               {todayAppts.length === 0 ? (
-                <div style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center', padding: '16px 0' }}>No appointments today.</div>
+                <div style={{ color: '#94a3b8', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>No appointments today.</div>
               ) : (
                 <div className="d-flex flex-column gap-2">
                   {todayAppts.map((apt) => (
-                    <div key={apt.id} className="d-flex align-items-center gap-3 p-2 rounded-3" style={{ backgroundColor: '#f9fafb' }}>
-                      <div className="d-flex align-items-center justify-content-center rounded-circle text-white fw-bold flex-shrink-0" style={{ width: 36, height: 36, backgroundColor: '#14b8a6', fontSize: 11 }}>
+                    <div key={apt.id} className="d-flex align-items-center gap-3 p-3 rounded-3" style={{ backgroundColor: '#f8fafc' }}>
+                      <div className="d-flex align-items-center justify-content-center rounded-circle text-white fw-bold flex-shrink-0"
+                        style={{ width: 36, height: 36, background: 'linear-gradient(135deg, #10b981, #059669)', fontSize: 11 }}>
                         {initials(apt.name || apt.patient_name || '')}
                       </div>
                       <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                        <div className="fw-semibold text-truncate" style={{ fontSize: 13, color: '#111827' }}>{apt.name || apt.patient_name || 'Unknown'}</div>
-                        <div style={{ fontSize: 11, color: '#6b7280' }}>{apt.service}</div>
+                        <div className="fw-semibold text-truncate" style={{ fontSize: 13, color: '#0f172a' }}>{apt.name || apt.patient_name || 'Unknown'}</div>
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>{apt.service}</div>
                       </div>
                       <div className="text-end flex-shrink-0">
-                        <div className="fw-semibold" style={{ fontSize: 12, color: '#111827' }}>{apt.time}</div>
-                        <Badge style={{ backgroundColor: apt.status === 'confirmed' ? '#dbeafe' : '#fef3c7', color: apt.status === 'confirmed' ? '#1e40af' : '#92400e', fontSize: 10, fontWeight: 600 }}>{apt.status}</Badge>
+                        <div className="fw-semibold" style={{ fontSize: 12, color: '#0f172a' }}>{apt.time}</div>
+                        <Badge pill style={{
+                          backgroundColor: apt.status === 'confirmed' ? '#dcfce7' : apt.status === 'completed' ? '#dbeafe' : '#fef3c7',
+                          color: apt.status === 'confirmed' ? '#166534' : apt.status === 'completed' ? '#1e40af' : '#92400e',
+                          fontSize: 10, fontWeight: 600, padding: '3px 8px',
+                        }}>{apt.status}</Badge>
                       </div>
                     </div>
                   ))}
@@ -270,22 +327,27 @@ const Dashboard = () => {
         </Col>
 
         <Col xs={12} md={6} lg={3}>
-          <Card className="border rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 6px 20px rgba(0,0,0,0.08)', animationDelay: '0.35s' }}>
+          <Card className="border-0 rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
             <Card.Body className="p-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <span className="fw-bold" style={{ fontSize: 14, color: '#111827' }}><Bell size={16} className="me-2" style={{ color: '#f59e0b' }} />Health Alerts</span>
-                <Badge pill style={{ backgroundColor: '#fee2e2', color: '#991b1b', fontSize: 10 }}>{healthAlerts.length} new</Badge>
+                <div>
+                  <span className="fw-bold" style={{ fontSize: 15, color: '#0f172a' }}>Health Alerts</span>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Action items</div>
+                </div>
+                <Badge pill style={{ backgroundColor: '#fef2f2', color: '#dc2626', fontSize: 10, fontWeight: 600, padding: '3px 8px' }}>
+                  {healthAlerts.length} new
+                </Badge>
               </div>
               <div className="d-flex flex-column gap-2">
                 {healthAlerts.map((alert) => {
                   const ac = alertColors[alert.type];
                   return (
-                    <div key={alert.id} className="p-2 rounded-3" style={{ backgroundColor: ac.bg, border: `1px solid ${ac.border}` }}>
+                    <div key={alert.id} className="p-3 rounded-3" style={{ backgroundColor: ac.bg, border: `1px solid ${ac.border}` }}>
                       <div className="d-flex align-items-center gap-2 mb-1">
                         <span style={{ color: ac.color }}>{alert.icon}</span>
                         <span className="fw-semibold" style={{ fontSize: 12, color: ac.color }}>{alert.title}</span>
                       </div>
-                      <div style={{ fontSize: 11, color: ac.color, opacity: 0.85 }}>{alert.message}</div>
+                      <div style={{ fontSize: 11, color: ac.color, opacity: 0.8 }}>{alert.message}</div>
                     </div>
                   );
                 })}
@@ -295,32 +357,36 @@ const Dashboard = () => {
         </Col>
 
         <Col xs={12} md={6} lg={4}>
-          <Card className="border rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 6px 20px rgba(0,0,0,0.08)', animationDelay: '0.4s' }}>
+          <Card className="border-0 rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
             <Card.Body className="p-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <span className="fw-bold" style={{ fontSize: 14, color: '#111827' }}><Activity size={16} className="me-2" style={{ color: '#8b5cf6' }} />Health Programs</span>
-                <Button size="sm" variant="link" className="p-0 text-decoration-none d-flex align-items-center gap-1" style={{ fontSize: 12, color: '#0f766e', fontWeight: 500 }} onClick={() => navigate('/admin/services')}>
-                  Details <ChevronRight size={14} />
+                <div>
+                  <span className="fw-bold" style={{ fontSize: 15, color: '#0f172a' }}>Health Programs</span>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Active program distribution</div>
+                </div>
+                <Button size="sm" variant="link" className="p-0 text-decoration-none d-flex align-items-center gap-1"
+                  style={{ fontSize: 11, color: '#10b981', fontWeight: 600 }} onClick={() => navigate('/admin/services')}>
+                  Details <ChevronRight size={13} />
                 </Button>
               </div>
               <div className="d-flex align-items-center">
                 <div style={{ width: 120, height: 120 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie data={healthProgramsData} cx="50%" cy="50%" innerRadius={30} outerRadius={50} dataKey="value" strokeWidth={0}>
+                      <Pie data={healthProgramsData} cx="50%" cy="50%" innerRadius={32} outerRadius={52} dataKey="value" strokeWidth={0} paddingAngle={3}>
                         {healthProgramsData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                       </Pie>
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="flex-grow-1 ms-2">
+                <div className="flex-grow-1 ms-3">
                   {healthProgramsData.map((prog, i) => (
                     <div key={i} className="d-flex align-items-center justify-content-between mb-2">
                       <div className="d-flex align-items-center gap-2">
-                        <span className="rounded-circle d-inline-block" style={{ width: 8, height: 8, backgroundColor: prog.color }} />
-                        <span style={{ fontSize: 11, color: '#374151' }}>{prog.name}</span>
+                        <span style={{ width: 8, height: 8, borderRadius: 3, backgroundColor: prog.color, display: 'inline-block' }} />
+                        <span style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>{prog.name}</span>
                       </div>
-                      <span className="fw-bold" style={{ fontSize: 12, color: '#111827' }}>{prog.value}</span>
+                      <span className="fw-bold" style={{ fontSize: 12, color: '#0f172a' }}>{prog.value}</span>
                     </div>
                   ))}
                 </div>

@@ -94,78 +94,46 @@ p {
 }
 
 .bh-sidebar {
-  background:
-    radial-gradient(circle at 18% 12%, rgba(94, 234, 212, 0.18), transparent 42%),
-    radial-gradient(circle at 85% 88%, rgba(16, 185, 129, 0.18), transparent 45%),
-    linear-gradient(165deg, #064e3b 0%, #065f46 30%, #047857 60%, #0f766e 100%);
+  background: #0f172a;
   position: relative;
   overflow: hidden;
+  border-right: 1px solid rgba(255,255,255,0.04);
 }
 .bh-sidebar::before {
   content: '';
   position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 200px;
+  background: radial-gradient(ellipse at 30% 0%, rgba(16, 185, 129, 0.08), transparent 70%);
   pointer-events: none;
-  opacity: 0.06;
-  /* Medical cross pattern watermark */
-  background-image:
-    linear-gradient(currentColor, currentColor),
-    linear-gradient(currentColor, currentColor);
-  background-size: 14px 4px, 4px 14px;
-  background-position: 30px 50px, 30px 50px, 110px 200px, 110px 200px, 60px 380px, 60px 380px;
-  background-repeat: no-repeat;
-  color: #fff;
 }
 .bh-sidebar::after {
   content: '';
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: 4px;
-  background: linear-gradient(90deg, #5eead4, #34d399, #6ee7b7, #5eead4);
-  background-size: 200% 100%;
-  animation: shimmer 4s linear infinite;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #10b981, transparent);
   pointer-events: none;
 }
 
 .bh-nav-link {
   position: relative;
-  transition: background-color 0.25s ease, color 0.25s ease, transform 0.25s ease, padding 0.25s ease;
-  animation: slideInLeft 0.35s ease both;
+  transition: all 0.2s ease;
 }
 .bh-nav-link:hover {
-  background-color: rgba(255,255,255,0.12) !important;
-  transform: translateX(3px);
+  background-color: rgba(255,255,255,0.05) !important;
 }
 .bh-nav-link.active {
-  background-color: #fff !important;
-  color: #0f766e !important;
-  box-shadow: 0 6px 18px rgba(15, 118, 110, 0.25);
-}
-.bh-nav-link.active::before {
-  content: '';
-  position: absolute;
-  left: -12px;
-  top: 18%;
-  bottom: 18%;
-  width: 4px;
-  border-radius: 4px;
-  background: linear-gradient(180deg, #5eead4, #14b8a6);
-  box-shadow: 0 0 12px rgba(94, 234, 212, 0.85);
-  animation: fadeInUp 0.3s ease both;
+  background-color: rgba(16, 185, 129, 0.12) !important;
+  color: #fff !important;
 }
 .bh-nav-link .nav-icon {
-  transition: transform 0.25s ease;
+  transition: transform 0.2s ease;
 }
 .bh-nav-link:hover .nav-icon {
-  transform: scale(1.12) rotate(-4deg);
-}
-
-.bh-pulse-dot {
-  animation: pulseDot 1.8s ease-out infinite;
-}
-
-.bh-logo-glow {
-  animation: floatGlow 3s ease-in-out infinite;
+  transform: scale(1.08);
 }
 
 .bh-fade-up {
