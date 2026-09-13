@@ -482,9 +482,9 @@ const Reports = () => {
                   showWeekNumbers={dateMode === 'weekly'}
                   className="bh-dp-input bh-dp-range"
                   placeholderText="Select date range"
-                  popperPlacement="bottom-start"
                   monthsShown={dateMode === 'weekly' ? 2 : 1}
                   isClearable
+                  portalId="datepicker-portal"
                 />
               </div>
             </Col>
@@ -767,6 +767,9 @@ const Reports = () => {
           </div>
         </Card.Body>
       </Card>
+
+      {/* ── DatePicker Portal ── */}
+      <div id="datepicker-portal" />
 
       {/* ── Preview Modal ── */}
       <Modal show={showPreview} onHide={() => setShowPreview(false)} centered size="lg">
