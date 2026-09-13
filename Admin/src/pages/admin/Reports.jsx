@@ -12,6 +12,7 @@ import {
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { supabase } from '../../config/supabase';
+import * as XLSX from 'xlsx';
 
 /* ── Helpers ── */
 const downloadCSV = (filename, headers, rows) => {
@@ -75,10 +76,10 @@ const Reports = () => {
       const isoEnd = endDate ? endDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
 
       const [apptRes, vaccRes, svcRes] = await Promise.all([
-        supabase.from('appointments').select('id, date, status, service, created_at')
+        supabase.from('appointments').select('id, name, date, time, status, service, notes, handled_by, created_at')
           .is('deleted_at', null).gte('date', isoStart).lte('date', isoEnd)
           .order('date', { ascending: true }),
-        supabase.from('vaccinations').select('id, date, status, vaccine, created_at')
+        supabase.from('vaccinations').select('id, patient, date, vaccine, dose, status, administered_by, site, notes, created_at')
           .is('deleted_at', null).gte('date', isoStart).lte('date', isoEnd)
           .order('date', { ascending: true }),
         supabase.from('services').select('id, name, category')
@@ -215,7 +216,90 @@ const Reports = () => {
       .sort((a, b) => b.value - a.value);
   }, [appointments]);
 
-  /* ── Export handlers ── */
+  /* ── Week helper for Excel grouping ── */
+  const getWeekLabel = (dateStr) => {
+    const d = new Date(dateStr);
+    const startOfYear = new Date(d.getFullYear(), 0, 1);
+    const weekNum = Math.ceil(((d - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const fmt = (dt) => dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return { weekNum, label: `Week ${weekNum} (${fmt(monday)} - ${fmt(sunday)})` };
+  };
+
+  /* ── Export as Excel with weekly sheets ── */
+  const handleExportExcel = () => {
+    const wb = XLSX.utils.book_new();
+    const today = new Date().toISOString().split('T')[0];
+
+    /* --- Sheet 1: Weekly Summary --- */
+    const weekMap = {};
+    appointments.forEach(a => {
+      if (!a.date) return;
+      const { label } = getWeekLabel(a.date);
+      if (!weekMap[label]) weekMap[label] = { week: label, appointments: 0, completed: 0, pending: 0, vaccinations: 0 };
+      weekMap[label].appointments += 1;
+      if (a.status === 'completed') weekMap[label].completed += 1;
+      else weekMap[label].pending += 1;
+    });
+    vaccinations.forEach(v => {
+      if (!v.date) return;
+      const { label } = getWeekLabel(v.date);
+      if (!weekMap[label]) weekMap[label] = { week: label, appointments: 0, completed: 0, pending: 0, vaccinations: 0 };
+      weekMap[label].vaccinations += 1;
+    });
+    const summaryRows = Object.values(weekMap);
+    summaryRows.push({
+      week: 'TOTAL',
+      appointments: summaryRows.reduce((s, r) => s + r.appointments, 0),
+      completed: summaryRows.reduce((s, r) => s + r.completed, 0),
+      pending: summaryRows.reduce((s, r) => s + r.pending, 0),
+      vaccinations: summaryRows.reduce((s, r) => s + r.vaccinations, 0),
+    });
+    const ws1 = XLSX.utils.json_to_sheet(summaryRows.map(r => ({
+      'Week': r.week, 'Appointments': r.appointments, 'Completed': r.completed,
+      'Pending': r.pending, 'Vaccinations': r.vaccinations,
+    })));
+    ws1['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Weekly Summary');
+
+    /* --- Sheet 2: All Appointments --- */
+    const apptRows = appointments.map(a => ({
+      'Date': a.date || '', 'Time': a.time || '', 'Patient': a.name || '',
+      'Service': a.service || '', 'Status': a.status || '',
+      'Handled By': a.handled_by || '', 'Notes': a.notes || '',
+    }));
+    if (apptRows.length === 0) apptRows.push({ 'Date': 'No records', 'Time': '', 'Patient': '', 'Service': '', 'Status': '', 'Handled By': '', 'Notes': '' });
+    const ws2 = XLSX.utils.json_to_sheet(apptRows);
+    ws2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 20 }, { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 24 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Appointments');
+
+    /* --- Sheet 3: All Vaccinations --- */
+    const vaccRows = vaccinations.map(v => ({
+      'Date': v.date || '', 'Patient': v.patient || '', 'Vaccine': v.vaccine || '',
+      'Dose': v.dose || '', 'Status': v.status || '',
+      'Administered By': v.administered_by || '', 'Site': v.site || '', 'Notes': v.notes || '',
+    }));
+    if (vaccRows.length === 0) vaccRows.push({ 'Date': 'No records', 'Patient': '', 'Vaccine': '', 'Dose': '', 'Status': '', 'Administered By': '', 'Site': '', 'Notes': '' });
+    const ws3 = XLSX.utils.json_to_sheet(vaccRows);
+    ws3['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 16 }, { wch: 8 }, { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 24 }];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Vaccinations');
+
+    /* --- Sheet 4: Service Breakdown --- */
+    const svcRows = serviceBreakdown.map(s => ({
+      'Service': s.name, 'Count': s.value, 'Percentage': `${s.pct}%`,
+    }));
+    svcRows.push({ 'Service': 'TOTAL', 'Count': svcRows.reduce((s, r) => s + r.Count, 0), 'Percentage': '100%' });
+    const ws4 = XLSX.utils.json_to_sheet(svcRows);
+    ws4['!cols'] = [{ wch: 16 }, { wch: 10 }, { wch: 12 }];
+    XLSX.utils.book_append_sheet(wb, ws4, 'Service Breakdown');
+
+    XLSX.writeFile(wb, `B-Health-Weekly-Report-${today}.xlsx`);
+  };
+
+  /* ── Other export handlers ── */
   const handleExportSummary = () => {
     downloadCSV('report-summary.csv',
       [dateMode === 'weekly' ? 'Week' : 'Month', 'Appointments', 'Completed', 'Vaccinations'],
@@ -328,8 +412,11 @@ const Reports = () => {
               <Download size={14} /> Export
             </Dropdown.Toggle>
             <Dropdown.Menu align="end" style={{ fontSize: 12, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+              <Dropdown.Item onClick={handleExportExcel} className="d-flex align-items-center gap-2 py-2">
+                <FileSpreadsheet size={14} color="#16a34a" /> Export as Excel (.xlsx)
+              </Dropdown.Item>
               <Dropdown.Item onClick={handleExportSummary} className="d-flex align-items-center gap-2 py-2">
-                <FileSpreadsheet size={14} color="#16a34a" /> Export as CSV
+                <FileSpreadsheet size={14} color="#6b7280" /> Export as CSV
               </Dropdown.Item>
               <Dropdown.Item onClick={handleExportJSON} className="d-flex align-items-center gap-2 py-2">
                 <File size={14} color="#3b82f6" /> Export as JSON
@@ -713,8 +800,12 @@ const Reports = () => {
         </Modal.Body>
         <Modal.Footer style={{ border: 'none' }}>
           <Button variant="light" size="sm" onClick={() => setShowPreview(false)} className="rounded-3">Close</Button>
-          <Button size="sm" onClick={() => { handleExportSummary(); setShowPreview(false); }}
+          <Button size="sm" onClick={() => { handleExportExcel(); setShowPreview(false); }}
             className="rounded-3 d-flex align-items-center gap-1" style={{ background: '#16a34a', border: 'none' }}>
+            <FileSpreadsheet size={14} /> Download Excel
+          </Button>
+          <Button size="sm" onClick={() => { handleExportSummary(); setShowPreview(false); }}
+            className="rounded-3 d-flex align-items-center gap-1" variant="outline-success">
             <Download size={14} /> Download CSV
           </Button>
           <Button size="sm" onClick={handlePrint} variant="outline-secondary" className="rounded-3 d-flex align-items-center gap-1">
