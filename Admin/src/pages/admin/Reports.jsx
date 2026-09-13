@@ -4,7 +4,7 @@ import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Download, FileText, TrendingUp, Users, Activity, Syringe, Printer, FileSpreadsheet, File, Calendar } from 'lucide-react';
+import { Download, FileText, TrendingUp, Users, Activity, Syringe, Printer, FileSpreadsheet, File } from 'lucide-react';
 
 const monthlyData = [
   { month: 'Jan', appointments: 42, completed: 38, vaccinations: 18 },
@@ -17,13 +17,6 @@ const monthlyData = [
   { month: 'Aug', appointments: 75, completed: 70, vaccinations: 33 },
 ];
 
-const weeklyData = [
-  { week: 'Week 1', appointments: 18, completed: 16, vaccinations: 8 },
-  { week: 'Week 2', appointments: 22, completed: 20, vaccinations: 10 },
-  { week: 'Week 3', appointments: 19, completed: 17, vaccinations: 9 },
-  { week: 'Week 4', appointments: 16, completed: 15, vaccinations: 6 },
-];
-
 const serviceBreakdown = [
   { name: 'Consultation',  value: 145, color: '#16a34a' },
   { name: 'Vaccination',   value: 98,  color: '#3b82f6' },
@@ -33,12 +26,10 @@ const serviceBreakdown = [
 ];
 
 const recentReports = [
-  { id: 1, name: 'Weekly Summary - Week 4 Sept 2026', type: 'Weekly', date: '2026-09-13', size: '89 KB' },
-  { id: 2, name: 'Monthly Summary - August 2026',  type: 'Monthly', date: '2026-08-31', size: '124 KB' },
-  { id: 3, name: 'Weekly Summary - Week 3 Sept 2026', type: 'Weekly', date: '2026-09-06', size: '92 KB' },
-  { id: 4, name: 'Vaccination Report - Q3',        type: 'Quarterly', date: '2026-07-15', size: '210 KB' },
-  { id: 5, name: 'Resident Demographics',          type: 'Annual', date: '2026-06-01', size: '312 KB' },
-  { id: 6, name: 'Appointment Trends - July',      type: 'Monthly', date: '2026-07-31', size: '98 KB' },
+  { id: 1, name: 'Monthly Summary - August 2026',  type: 'Monthly', date: '2026-08-31', size: '124 KB' },
+  { id: 2, name: 'Vaccination Report - Q3',        type: 'Quarterly', date: '2026-07-15', size: '210 KB' },
+  { id: 3, name: 'Resident Demographics',          type: 'Annual', date: '2026-06-01', size: '312 KB' },
+  { id: 4, name: 'Appointment Trends - July',      type: 'Monthly', date: '2026-07-31', size: '98 KB' },
 ];
 
 const downloadCSV = (filename, headers, rows) => {
@@ -54,7 +45,6 @@ const downloadCSV = (filename, headers, rows) => {
 
 const Reports = () => {
   const [range, setRange] = useState('8m');
-  const [reportType, setReportType] = useState('monthly'); // 'weekly' or 'monthly'
 
   const filteredMonthly = useMemo(() => {
     if (range === '3m') return monthlyData.slice(-3);
@@ -62,12 +52,8 @@ const Reports = () => {
     return monthlyData;
   }, [range]);
 
-  const currentData = useMemo(() => {
-    return reportType === 'weekly' ? weeklyData : filteredMonthly;
-  }, [reportType, filteredMonthly]);
-
   const totals = useMemo(() => {
-    const sum = (k) => currentData.reduce((s, x) => s + x[k], 0);
+    const sum = (k) => filteredMonthly.reduce((s, x) => s + x[k], 0);
     const totalAppointments = sum('appointments');
     const totalCompleted = sum('completed');
     const totalVaccinations = sum('vaccinations');
@@ -75,20 +61,14 @@ const Reports = () => {
       ? Math.round((totalCompleted / totalAppointments) * 100)
       : 0;
     return { totalAppointments, totalCompleted, totalVaccinations, completionRate };
-  }, [currentData]);
+  }, [filteredMonthly]);
 
   const handleExportSummary = () => {
-    const filename = reportType === 'weekly' ? 'weekly-summary.csv' : 'monthly-summary.csv';
-    const header = reportType === 'weekly' 
-      ? ['Week', 'Appointments', 'Completed', 'Vaccinations']
-      : ['Month', 'Appointments', 'Completed', 'Vaccinations'];
-    const rows = currentData.map((d) => [
-      reportType === 'weekly' ? d.week : d.month, 
-      d.appointments, 
-      d.completed, 
-      d.vaccinations
-    ]);
-    downloadCSV(filename, header, rows);
+    downloadCSV(
+      'monthly-summary.csv',
+      ['Month', 'Appointments', 'Completed', 'Vaccinations'],
+      filteredMonthly.map((m) => [m.month, m.appointments, m.completed, m.vaccinations]),
+    );
   };
 
   const handleExportServices = () => {
@@ -106,18 +86,16 @@ const Reports = () => {
   const handleExportJSON = () => {
     const data = {
       generatedAt: new Date().toISOString(),
-      reportType,
       period: range,
       summary: totals,
-      data: currentData,
+      monthlyData: filteredMonthly,
       serviceBreakdown,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const filename = `health-report-${reportType}-${new Date().toISOString().split('T')[0]}.json`;
-    a.download = filename;
+    a.download = `health-report-${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -138,52 +116,17 @@ const Reports = () => {
             <div className="fw-bold" style={{ fontSize: 14, color: '#111827' }}>Analytics & Reports</div>
             <div style={{ fontSize: 11, color: '#9ca3af' }}>Insights from health center activity</div>
           </div>
-          <div className="ms-auto d-flex align-items-center gap-2 flex-wrap">
-            {/* Report Type Toggle */}
-            <div className="btn-group" role="group">
-              <Button
-                size="sm"
-                onClick={() => setReportType('weekly')}
-                className="border d-flex align-items-center gap-1"
-                style={{
-                  backgroundColor: reportType === 'weekly' ? '#16a34a' : '#fff',
-                  color: reportType === 'weekly' ? '#fff' : '#374151',
-                  fontWeight: 500,
-                  fontSize: 12,
-                  borderColor: '#e5e7eb'
-                }}
-              >
-                <Calendar size={14} /> Weekly
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => setReportType('monthly')}
-                className="border d-flex align-items-center gap-1"
-                style={{
-                  backgroundColor: reportType === 'monthly' ? '#16a34a' : '#fff',
-                  color: reportType === 'monthly' ? '#fff' : '#374151',
-                  fontWeight: 500,
-                  fontSize: 12,
-                  borderColor: '#e5e7eb'
-                }}
-              >
-                <Calendar size={14} /> Monthly
-              </Button>
-            </div>
-
-            {/* Range selector - only show for monthly */}
-            {reportType === 'monthly' && (
-              <Form.Select
-                size="sm"
-                value={range}
-                onChange={(e) => setRange(e.target.value)}
-                style={{ width: 140, fontSize: 12 }}
-              >
-                <option value="3m">Last 3 months</option>
-                <option value="6m">Last 6 months</option>
-                <option value="8m">Last 8 months</option>
-              </Form.Select>
-            )}
+          <div className="ms-auto d-flex align-items-center gap-2">
+            <Form.Select
+              size="sm"
+              value={range}
+              onChange={(e) => setRange(e.target.value)}
+              style={{ width: 140, fontSize: 12 }}
+            >
+              <option value="3m">Last 3 months</option>
+              <option value="6m">Last 6 months</option>
+              <option value="8m">Last 8 months</option>
+            </Form.Select>
             <Button
               size="sm"
               variant="light"
@@ -246,12 +189,7 @@ const Reports = () => {
           <Card className="border rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
             <Card.Body className="p-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                  <span className="fw-bold" style={{ fontSize: 14, color: '#111827' }}>Appointments vs Completed</span>
-                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
-                    {reportType === 'weekly' ? 'Current Month - Weekly Breakdown' : 'Monthly Trends'}
-                  </div>
-                </div>
+                <span className="fw-bold" style={{ fontSize: 14, color: '#111827' }}>Appointments vs Completed</span>
                 <div className="d-flex align-items-center gap-3" style={{ fontSize: 11, color: '#6b7280', fontWeight: 500 }}>
                   <span className="d-flex align-items-center gap-1">
                     <span className="rounded-circle d-inline-block" style={{ width: 8, height: 8, backgroundColor: '#3b82f6' }} />
@@ -264,14 +202,9 @@ const Reports = () => {
                 </div>
               </div>
               <ResponsiveContainer width="100%" height={260}>
-                <BarChart data={currentData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <BarChart data={filteredMonthly} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                  <XAxis 
-                    dataKey={reportType === 'weekly' ? 'week' : 'month'} 
-                    tick={{ fontSize: 11, fill: '#9ca3af' }} 
-                    axisLine={false} 
-                    tickLine={false} 
-                  />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
                   <Bar dataKey="appointments" fill="#3b82f6" radius={[6, 6, 0, 0]} />
@@ -319,16 +252,9 @@ const Reports = () => {
         <Col xs={12}>
           <Card className="border rounded-4 bh-fade-up" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)', animationDelay: '0.15s' }}>
             <Card.Body className="p-4">
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                  <div className="fw-bold" style={{ fontSize: 14, color: '#111827' }}>Vaccinations Trend</div>
-                  <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
-                    {reportType === 'weekly' ? 'Weekly Distribution' : 'Monthly Distribution'}
-                  </div>
-                </div>
-              </div>
+              <div className="fw-bold mb-3" style={{ fontSize: 14, color: '#111827' }}>Vaccinations Trend</div>
               <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={currentData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <AreaChart data={filteredMonthly} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gVacc" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
@@ -336,12 +262,7 @@ const Reports = () => {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                  <XAxis 
-                    dataKey={reportType === 'weekly' ? 'week' : 'month'} 
-                    tick={{ fontSize: 11, fill: '#9ca3af' }} 
-                    axisLine={false} 
-                    tickLine={false} 
-                  />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #e5e7eb' }} />
                   <Area type="monotone" dataKey="vaccinations" stroke="#f59e0b" strokeWidth={2.5} fill="url(#gVacc)" />
