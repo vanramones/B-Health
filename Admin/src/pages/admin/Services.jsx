@@ -17,7 +17,12 @@ const ServiceIcon = ({ name, accent, size = 22 }) => {
   return (
     <div
       className="d-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
-      style={{ width: 44, height: 44, backgroundColor: `${accent}1a`, color: accent }}
+      style={{
+        width: 44, height: 44,
+        background: `linear-gradient(135deg, ${accent}22, ${accent}08)`,
+        color: accent,
+        boxShadow: `0 2px 8px ${accent}25`,
+      }}
     >
       <Comp size={size} />
     </div>
@@ -25,14 +30,14 @@ const ServiceIcon = ({ name, accent, size = 22 }) => {
 };
 
 const accentPalette = [
-  '#16a34a', '#3b82f6', '#ec4899', '#f472b6', '#a855f7', '#0ea5e9',
-  '#84cc16', '#f59e0b', '#8b5cf6', '#dc2626', '#06b6d4',
+  '#10b981', '#3b82f6', '#ec4899', '#f43f5e', '#a855f7', '#0ea5e9',
+  '#84cc16', '#f59e0b', '#8b5cf6', '#dc2626', '#06b6d4', '#f97316',
 ];
 
 const iconChoices = Object.keys(iconMap);
 
 const emptyForm = {
-  id: null, name: '', category: 'General', icon: 'heart', accent: '#16a34a',
+  id: null, name: '', category: 'General', icon: 'heart', accent: '#10b981',
   description: '', beneficiaries: 0, schedule: '', location: '', staff: '', slots_per_hour: 5, active: true,
 };
 
@@ -149,46 +154,60 @@ const Services = () => {
       {/* Stat Summary */}
       <Row className="g-2 g-md-3 mb-4 bh-stagger">
         <Col xs={6} md={4}>
-          <Card className="border rounded-4 bh-card-hover" onClick={() => { setStatusFilter('all'); setCategory('all'); }}
-            style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)', cursor: 'pointer', outline: statusFilter === 'all' ? '2px solid #1d4ed8' : 'none' }}>
+          <Card className="border-0 rounded-4 bh-card-hover" onClick={() => { setStatusFilter('all'); setCategory('all'); }}
+            style={{
+              cursor: 'pointer',
+              background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+              boxShadow: '0 2px 12px rgba(59, 130, 246, 0.12)',
+              outline: statusFilter === 'all' ? '2px solid #3b82f6' : 'none',
+            }}>
             <Card.Body className="p-3 d-flex justify-content-between align-items-center">
               <div>
-                <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Total Services</div>
-                <div className="fw-bold" style={{ fontSize: 26, color: '#111827', lineHeight: 1.1 }}>{items.length}</div>
+                <div style={{ fontSize: 11, color: '#1e40af', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total Services</div>
+                <div className="fw-bold" style={{ fontSize: 28, color: '#1e3a8a', lineHeight: 1.1, letterSpacing: '-0.02em' }}>{items.length}</div>
               </div>
               <div className="d-flex align-items-center justify-content-center rounded-3"
-                style={{ width: 38, height: 38, backgroundColor: '#dbeafe', color: '#1d4ed8' }}>
-                <Heart size={18} />
+                style={{ width: 42, height: 42, background: 'linear-gradient(135deg, #3b82f6, #2563eb)', color: '#fff', boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)' }}>
+                <Heart size={20} />
               </div>
             </Card.Body>
           </Card>
         </Col>
         <Col xs={6} md={4}>
-          <Card className="border rounded-4 bh-card-hover" onClick={() => setStatusFilter('active')}
-            style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)', cursor: 'pointer', outline: statusFilter === 'active' ? '2px solid #16a34a' : 'none' }}>
+          <Card className="border-0 rounded-4 bh-card-hover" onClick={() => setStatusFilter('active')}
+            style={{
+              cursor: 'pointer',
+              background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)',
+              boxShadow: '0 2px 12px rgba(16, 185, 129, 0.12)',
+              outline: statusFilter === 'active' ? '2px solid #10b981' : 'none',
+            }}>
             <Card.Body className="p-3 d-flex justify-content-between align-items-center">
               <div>
-                <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Active Services</div>
-                <div className="fw-bold" style={{ fontSize: 26, color: '#111827', lineHeight: 1.1 }}>{activeCount}</div>
+                <div style={{ fontSize: 11, color: '#047857', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Active Services</div>
+                <div className="fw-bold" style={{ fontSize: 28, color: '#064e3b', lineHeight: 1.1, letterSpacing: '-0.02em' }}>{activeCount}</div>
               </div>
               <div className="d-flex align-items-center justify-content-center rounded-3"
-                style={{ width: 38, height: 38, backgroundColor: '#bfdbfe', color: '#14532d' }}>
-                <Activity size={18} />
+                style={{ width: 42, height: 42, background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff', boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)' }}>
+                <Activity size={20} />
               </div>
             </Card.Body>
           </Card>
         </Col>
         <Col xs={12} md={4}>
-          <Card className="border rounded-4 bh-card-hover" onClick={() => { setStatusFilter('all'); setCategory('all'); }}
-            style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)', cursor: 'pointer' }}>
+          <Card className="border-0 rounded-4 bh-card-hover" onClick={() => { setStatusFilter('all'); setCategory('all'); }}
+            style={{
+              cursor: 'pointer',
+              background: 'linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%)',
+              boxShadow: '0 2px 12px rgba(236, 72, 153, 0.12)',
+            }}>
             <Card.Body className="p-3 d-flex justify-content-between align-items-center">
               <div>
-                <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Total Beneficiaries</div>
-                <div className="fw-bold" style={{ fontSize: 26, color: '#111827', lineHeight: 1.1 }}>{totalBeneficiaries.toLocaleString()}</div>
+                <div style={{ fontSize: 11, color: '#be185d', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Total Beneficiaries</div>
+                <div className="fw-bold" style={{ fontSize: 28, color: '#831843', lineHeight: 1.1, letterSpacing: '-0.02em' }}>{totalBeneficiaries.toLocaleString()}</div>
               </div>
               <div className="d-flex align-items-center justify-content-center rounded-3"
-                style={{ width: 38, height: 38, backgroundColor: '#fce7f3', color: '#be185d' }}>
-                <Users size={18} />
+                style={{ width: 42, height: 42, background: 'linear-gradient(135deg, #ec4899, #db2777)', color: '#fff', boxShadow: '0 4px 12px rgba(236, 72, 153, 0.3)' }}>
+                <Users size={20} />
               </div>
             </Card.Body>
           </Card>
@@ -196,7 +215,7 @@ const Services = () => {
       </Row>
 
       {/* Toolbar */}
-      <Card className="border rounded-4 mb-3" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+      <Card className="border-0 rounded-4 mb-3" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
         <Card.Body className="p-3">
           <div className="d-flex flex-wrap align-items-center gap-2">
             <div className="d-flex flex-wrap gap-1">
@@ -209,11 +228,12 @@ const Services = () => {
                     onClick={() => setCategory(c)}
                     className="border-0"
                     style={{
-                      backgroundColor: active ? '#15803d' : '#f3f4f6',
-                      color: active ? '#fff' : '#374151',
+                      backgroundColor: active ? '#10b981' : '#f1f5f9',
+                      color: active ? '#fff' : '#475569',
                       fontWeight: 600,
                       fontSize: 12,
                       textTransform: 'capitalize',
+                      transition: 'all 0.2s ease',
                     }}
                   >
                     {c} <span className="ms-1" style={{ opacity: 0.8 }}>({counts[c] || 0})</span>
@@ -223,22 +243,22 @@ const Services = () => {
             </div>
             <div className="ms-auto d-flex align-items-center gap-2 mt-2 mt-md-0">
               <InputGroup size="sm" className="flex-grow-1" style={{ maxWidth: 240, minWidth: 120 }}>
-                <InputGroup.Text className="bg-light border-end-0">
-                  <Search size={14} color="#9ca3af" />
+                <InputGroup.Text className="border-end-0" style={{ backgroundColor: '#f8fafc', borderColor: '#e2e8f0' }}>
+                  <Search size={14} color="#94a3b8" />
                 </InputGroup.Text>
                 <Form.Control
-                  className="bg-light border-start-0"
+                  className="border-start-0"
                   placeholder="Search..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  style={{ fontSize: 13 }}
+                  style={{ fontSize: 13, backgroundColor: '#f8fafc', borderColor: '#e2e8f0', color: '#334155' }}
                 />
               </InputGroup>
               <Button
                 size="sm"
                 onClick={openAdd}
                 className="d-flex align-items-center gap-1 border-0 flex-shrink-0"
-                style={{ backgroundColor: '#16a34a', fontWeight: 500, fontSize: 12 }}
+                style={{ background: 'linear-gradient(135deg, #10b981, #059669)', fontWeight: 600, fontSize: 12, boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)' }}
               >
                 <Plus size={14} /> <span className="d-none d-sm-inline">Add Service</span>
               </Button>
@@ -249,28 +269,33 @@ const Services = () => {
 
       {/* Services Grid */}
       {filtered.length === 0 ? (
-        <Card className="border rounded-4" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-          <Card.Body className="p-5 text-center" style={{ color: '#9ca3af' }}>No services found.</Card.Body>
+        <Card className="border-0 rounded-4" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+          <Card.Body className="p-5 text-center" style={{ color: '#94a3b8' }}>No services found.</Card.Body>
         </Card>
       ) : (
         <Row className="g-2 g-md-3 bh-stagger">
           {filtered.map((s) => (
             <Col key={s.id} xs={12} md={6} lg={4}>
               <Card
-                className="border rounded-4 h-100 bh-card-hover"
+                className="border-0 rounded-4 h-100 bh-card-hover"
                 style={{
                   boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
                   opacity: s.active ? 1 : 0.6,
-                  transition: 'opacity 0.2s ease',
+                  transition: 'all 0.2s ease',
                   cursor: 'pointer',
+                  overflow: 'hidden',
+                  position: 'relative',
                 }}
                 onClick={() => setShowView(s)}
               >
+                {/* Colored top accent bar */}
+                <div style={{ height: 4, background: `linear-gradient(90deg, ${s.accent}, ${s.accent}88)`, }} />
+
                 <Card.Body className="p-4 d-flex flex-column">
                   <div className="d-flex align-items-start gap-3 mb-3">
                     <ServiceIcon name={s.icon} accent={s.accent} />
                     <div className="flex-grow-1" style={{ minWidth: 0 }}>
-                      <div className="fw-bold text-truncate" style={{ fontSize: 15, color: '#111827' }}>
+                      <div className="fw-bold text-truncate" style={{ fontSize: 15, color: '#0f172a' }}>
                         {s.name}
                       </div>
                       <span
@@ -279,8 +304,8 @@ const Services = () => {
                           fontSize: 10,
                           fontWeight: 700,
                           color: s.accent,
-                          backgroundColor: `${s.accent}1a`,
-                          padding: '2px 8px',
+                          backgroundColor: `${s.accent}15`,
+                          padding: '3px 10px',
                           borderRadius: 999,
                           textTransform: 'uppercase',
                           letterSpacing: '0.04em',
@@ -293,9 +318,9 @@ const Services = () => {
                       style={{
                         fontSize: 10,
                         fontWeight: 700,
-                        color: s.active ? '#14532d' : '#1f2937',
-                        backgroundColor: s.active ? '#bfdbfe' : '#e5e7eb',
-                        border: `1px solid ${s.active ? '#22c55e' : '#9ca3af'}`,
+                        color: s.active ? '#047857' : '#6b7280',
+                        backgroundColor: s.active ? '#d1fae5' : '#f1f5f9',
+                        border: `1px solid ${s.active ? '#10b981' : '#cbd5e1'}`,
                         padding: '3px 10px',
                         borderRadius: 999,
                         textTransform: 'uppercase',
@@ -305,47 +330,47 @@ const Services = () => {
                     </span>
                   </div>
 
-                  <p style={{ fontSize: 12.5, color: '#4b5563', lineHeight: 1.5, marginBottom: 14, minHeight: 56 }}>
+                  <p style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.5, marginBottom: 14, minHeight: 56 }}>
                     {s.description}
                   </p>
 
                   <div className="d-flex align-items-center justify-content-between mb-3 pb-3"
-                    style={{ borderBottom: '1px solid #f3f4f6' }}>
+                    style={{ borderBottom: '1px solid #f1f5f9' }}>
                     <div>
-                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' }}>Beneficiaries</div>
-                      <div className="fw-bold" style={{ fontSize: 20, color: '#111827', lineHeight: 1.1 }}>{benefCount(s.name)}</div>
+                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Beneficiaries</div>
+                      <div className="fw-bold" style={{ fontSize: 22, color: '#0f172a', lineHeight: 1.1, letterSpacing: '-0.02em' }}>{benefCount(s.name)}</div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' }}>Slots/Hour</div>
-                      <div className="fw-bold" style={{ fontSize: 20, color: s.accent, lineHeight: 1.1 }}>{s.slots_per_hour ?? 5}</div>
+                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Slots/Hour</div>
+                      <div className="fw-bold" style={{ fontSize: 22, color: s.accent, lineHeight: 1.1, letterSpacing: '-0.02em' }}>{s.slots_per_hour ?? 5}</div>
                     </div>
                     <div className="text-end" style={{ maxWidth: '40%' }}>
-                      <div style={{ fontSize: 10, color: '#9ca3af', fontWeight: 600, textTransform: 'uppercase' }}>Schedule</div>
-                      <div className="text-truncate" style={{ fontSize: 11, color: '#4b5563', fontWeight: 500 }} title={s.schedule}>
+                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Schedule</div>
+                      <div className="text-truncate" style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }} title={s.schedule}>
                         {s.schedule}
                       </div>
                     </div>
                   </div>
 
                   <div className="mt-auto d-flex gap-1" onClick={(e) => e.stopPropagation()}>
-                    <Button size="sm" variant="light"
+                    <Button size="sm"
                       className="border-0 flex-grow-1 d-flex align-items-center justify-content-center gap-1"
                       onClick={() => openEdit(s)}
-                      style={{ fontSize: 12, fontWeight: 600, color: '#1d4ed8' }}>
+                      style={{ fontSize: 12, fontWeight: 600, background: `linear-gradient(135deg, ${s.accent}, ${s.accent}dd)`, color: '#fff' }}>
                       <Edit3 size={13} /> Edit
                     </Button>
                     <Button size="sm" variant="light"
                       className="border-0 d-flex align-items-center justify-content-center"
                       onClick={() => toggleActive(s.id)}
                       title={s.active ? 'Deactivate' : 'Activate'}
-                      style={{ width: 36 }}>
-                      <Power size={13} color={s.active ? '#dc2626' : '#16a34a'} />
+                      style={{ width: 36, backgroundColor: s.active ? '#fef2f2' : '#f0fdf4' }}>
+                      <Power size={13} color={s.active ? '#dc2626' : '#10b981'} />
                     </Button>
                     <Button size="sm" variant="light"
                       className="border-0 d-flex align-items-center justify-content-center"
                       onClick={() => setConfirmDelete(s)}
                       title="Delete"
-                      style={{ width: 36 }}>
+                      style={{ width: 36, backgroundColor: '#fef2f2' }}>
                       <Trash2 size={13} color="#dc2626" />
                     </Button>
                   </div>
@@ -527,7 +552,7 @@ const Services = () => {
           </Modal.Body>
           <Modal.Footer>
             <Button variant="light" size="sm" onClick={closeForm}>Cancel</Button>
-            <Button type="submit" size="sm" className="border-0" style={{ backgroundColor: '#16a34a' }}>
+            <Button type="submit" size="sm" className="border-0" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
               {editingId ? 'Save Changes' : 'Add Service'}
             </Button>
           </Modal.Footer>
