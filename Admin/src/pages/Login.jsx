@@ -315,27 +315,6 @@ const Login = () => {
               {submitting ? 'Signing in...' : 'Sign In'}
             </Button>
           </Form>
-
-          {/* Demo credentials */}
-          <div
-            className="d-flex align-items-center gap-2 mt-4 p-3 rounded-3"
-            style={{ backgroundColor: '#f8fafc', border: '1px dashed #cbd5e1' }}
-          >
-            <Shield size={14} color="#94a3b8" />
-            <span style={{ fontSize: 12, color: '#64748b' }}>
-              <strong>Demo:</strong> admin / admin123
-            </span>
-          </div>
-
-          {/* User login link */}
-          <div className="text-center mt-4">
-            <a
-              href="/login"
-              style={{ fontSize: 13, color: '#94a3b8', textDecoration: 'none' }}
-            >
-              ← Back to User Login
-            </a>
-          </div>
         </div>
       </div>
     </div>
