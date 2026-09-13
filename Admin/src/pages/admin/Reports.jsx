@@ -167,9 +167,13 @@ const Reports = () => {
     },
   ];
 
-  const dateLabel = dateMode === 'monthly'
-    ? `${startDate.toLocaleString('en-US', { month: 'short', year: 'numeric' })} - ${endDate.toLocaleString('en-US', { month: 'short', year: 'numeric' })}`
-    : `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+  const fmtDate = (d, mode) => {
+    if (!d) return '...';
+    return mode === 'monthly'
+      ? d.toLocaleString('en-US', { month: 'short', year: 'numeric' })
+      : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+  const dateLabel = `${fmtDate(startDate, dateMode)} - ${fmtDate(endDate, dateMode)}`;
 
   return (
     <div className="p-4" style={{ backgroundColor: '#f8fafc' }} ref={printRef}>
@@ -259,39 +263,26 @@ const Reports = () => {
             </Col>
 
             <Col xs={12} md="auto" className="flex-grow-1">
-              <div className="d-flex align-items-center gap-2 flex-wrap">
-                <div className="bh-dp-wrapper">
-                  <DatePicker
-                    selected={startDate}
-                    onChange={(date) => setStartDate(date)}
-                    selectsStart
-                    startDate={startDate}
-                    endDate={endDate}
-                    dateFormat={dateMode === 'weekly' ? 'MMM dd, yyyy' : 'MMM yyyy'}
-                    showMonthYearPicker={dateMode === 'monthly'}
-                    showWeekNumbers={dateMode === 'weekly'}
-                    className="bh-dp-input"
-                    placeholderText="Start"
-                    popperPlacement="bottom-start"
-                  />
-                </div>
-                <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: 500 }}>to</span>
-                <div className="bh-dp-wrapper">
-                  <DatePicker
-                    selected={endDate}
-                    onChange={(date) => setEndDate(date)}
-                    selectsEnd
-                    startDate={startDate}
-                    endDate={endDate}
-                    minDate={startDate}
-                    dateFormat={dateMode === 'weekly' ? 'MMM dd, yyyy' : 'MMM yyyy'}
-                    showMonthYearPicker={dateMode === 'monthly'}
-                    showWeekNumbers={dateMode === 'weekly'}
-                    className="bh-dp-input"
-                    placeholderText="End"
-                    popperPlacement="bottom-start"
-                  />
-                </div>
+              <div className="bh-dp-wrapper">
+                <DatePicker
+                  selected={startDate}
+                  onChange={(dates) => {
+                    const [start, end] = dates;
+                    setStartDate(start);
+                    setEndDate(end);
+                  }}
+                  startDate={startDate}
+                  endDate={endDate}
+                  selectsRange
+                  dateFormat={dateMode === 'weekly' ? 'MMM dd, yyyy' : 'MMM yyyy'}
+                  showMonthYearPicker={dateMode === 'monthly'}
+                  showWeekNumbers={dateMode === 'weekly'}
+                  className="bh-dp-input bh-dp-range"
+                  placeholderText="Select date range"
+                  popperPlacement="bottom-start"
+                  monthsShown={dateMode === 'weekly' ? 2 : 1}
+                  isClearable
+                />
               </div>
             </Col>
 

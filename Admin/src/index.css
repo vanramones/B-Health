@@ -298,6 +298,22 @@ p {
   backdrop-filter: blur(4px);
   transition: all 0.2s ease !important;
 }
+.bh-dp-wrapper .bh-dp-input.bh-dp-range {
+  width: 300px !important;
+}
+@media (max-width: 575.98px) {
+  .bh-dp-wrapper .bh-dp-input.bh-dp-range {
+    width: 100% !important;
+  }
+}
+.react-datepicker__close-icon::after {
+  background-color: rgba(255,255,255,0.3) !important;
+  font-size: 14px !important;
+  padding: 0 !important;
+  height: 18px !important;
+  width: 18px !important;
+  line-height: 16px !important;
+}
 .bh-dp-wrapper .bh-dp-input::placeholder {
   color: rgba(255, 255, 255, 0.5) !important;
 }
