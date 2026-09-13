@@ -342,94 +342,77 @@ const HealthRecords = () => {
         </Form>
       </Modal>
 
-      {/* View Modal - Enhanced */}
-      <Modal show={!!showView} onHide={() => setShowView(null)} centered size="lg">
-        <Modal.Header closeButton style={{ backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+      {/* View Modal - Compact */}
+      <Modal show={!!showView} onHide={() => setShowView(null)} centered>
+        <Modal.Header closeButton style={{ borderBottom: '1px solid #f1f5f9', padding: '12px 16px' }}>
           <div className="d-flex align-items-center gap-2">
-            <FileText size={22} color="#16a34a" />
-            <Modal.Title style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Health Record Details</Modal.Title>
+            <FileText size={18} color="#10b981" />
+            <Modal.Title style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>Health Record Details</Modal.Title>
           </div>
         </Modal.Header>
         {showView && (
-          <Modal.Body className="p-4" style={{ backgroundColor: '#fafafa' }}>
-            {/* Patient Profile Card */}
-            <div className="rounded-4 p-4 mb-4" style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-              <div className="d-flex align-items-center gap-4">
-                <div className="d-flex align-items-center justify-content-center rounded-circle text-white fw-bold" style={{ width: 70, height: 70, backgroundColor: '#16a34a', fontSize: 22 }}>
+          <Modal.Body className="p-3" style={{ backgroundColor: '#f8fafc' }}>
+            {/* Patient Profile */}
+            <div className="rounded-3 p-3 mb-3" style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>
+              <div className="d-flex align-items-center gap-3">
+                <div className="d-flex align-items-center justify-content-center rounded-circle text-white fw-bold flex-shrink-0"
+                  style={{ width: 44, height: 44, background: 'linear-gradient(135deg, #10b981, #059669)', fontSize: 14 }}>
                   {showView.patient.split(' ').map((p) => p[0]).slice(0, 2).join('')}
                 </div>
-                <div className="flex-grow-1">
-                  <div className="fw-bold" style={{ fontSize: 22, color: '#1e293b' }}>{showView.patient}</div>
-                  <div className="d-flex align-items-center gap-2 mt-2">
+                <div className="flex-grow-1" style={{ minWidth: 0 }}>
+                  <div className="fw-bold text-truncate" style={{ fontSize: 16, color: '#0f172a' }}>{showView.patient}</div>
+                  <div className="d-flex align-items-center gap-2 mt-1">
                     <TypePill type={showView.type} />
                     <StatusPill status={showView.status} />
                   </div>
                 </div>
-                <div className="text-end">
-                  <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Record ID</div>
-                  <div className="fw-bold" style={{ fontSize: 16, color: '#1e293b' }}>#{showView.id}</div>
+                <div className="text-end flex-shrink-0">
+                  <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Record ID</div>
+                  <div className="fw-bold" style={{ fontSize: 13, color: '#475569' }}>#{showView.id}</div>
                 </div>
               </div>
             </div>
 
-            <Row className="g-4">
+            <Row className="g-2">
               {/* Medical Information */}
               <Col xs={12} md={6}>
-                <div className="rounded-4 p-4 h-100" style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>
-                  <div className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ fontSize: 15, color: '#1e293b' }}>
-                    <Stethoscope size={18} color="#16a34a" /> Medical Information
+                <div className="rounded-3 p-3 h-100" style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>
+                  <div className="fw-bold mb-2 d-flex align-items-center gap-2" style={{ fontSize: 13, color: '#0f172a' }}>
+                    <Stethoscope size={15} color="#10b981" /> Medical Information
                   </div>
-                  <div className="d-flex flex-column gap-3" style={{ fontSize: 14 }}>
-                    <div className="p-3 rounded-3" style={{ backgroundColor: '#f8fafc' }}>
-                      <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Diagnosis</div>
-                      <div className="fw-semibold" style={{ color: '#1e293b' }}>{showView.diagnosis}</div>
+                  <div className="d-flex flex-column gap-2" style={{ fontSize: 13 }}>
+                    <div className="p-2 rounded-2" style={{ backgroundColor: '#f8fafc' }}>
+                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: 2 }}>Diagnosis</div>
+                      <div className="fw-semibold" style={{ color: '#0f172a', fontSize: 13 }}>{showView.diagnosis}</div>
                     </div>
-                    <div className="p-3 rounded-3" style={{ backgroundColor: '#f8fafc' }}>
-                      <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Record Type</div>
-                      <div className="fw-semibold" style={{ color: '#1e293b' }}>{showView.type}</div>
+                    <div className="p-2 rounded-2" style={{ backgroundColor: '#f8fafc' }}>
+                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: 2 }}>Record Type</div>
+                      <div className="fw-semibold" style={{ color: '#0f172a', fontSize: 13 }}>{showView.type}</div>
                     </div>
-                    {showView.prescription && (
-                      <div className="p-3 rounded-3" style={{ backgroundColor: '#fef3c7', border: '1px solid #fcd34d' }}>
-                        <div className="d-flex align-items-center gap-2 mb-2">
-                          <Pill size={16} color="#92400e" />
-                          <div style={{ fontSize: 11, color: '#92400e', fontWeight: 600, textTransform: 'uppercase' }}>Prescription</div>
-                        </div>
-                        <div style={{ fontSize: 13, color: '#92400e' }}>Prescription provided</div>
-                      </div>
-                    )}
                   </div>
                 </div>
               </Col>
 
               {/* Visit Details */}
               <Col xs={12} md={6}>
-                <div className="rounded-4 p-4 h-100" style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>
-                  <div className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ fontSize: 15, color: '#1e293b' }}>
-                    <ClipboardList size={18} color="#1d4ed8" /> Visit Details
+                <div className="rounded-3 p-3 h-100" style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>
+                  <div className="fw-bold mb-2 d-flex align-items-center gap-2" style={{ fontSize: 13, color: '#0f172a' }}>
+                    <ClipboardList size={15} color="#3b82f6" /> Visit Details
                   </div>
-                  <div className="d-flex flex-column gap-3" style={{ fontSize: 14 }}>
-                    <div className="d-flex align-items-start gap-3 p-3 rounded-3" style={{ backgroundColor: '#f8fafc' }}>
-                      <User size={20} color="#16a34a" style={{ flexShrink: 0 }} />
-                      <div>
-                        <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Attending Doctor/Staff</div>
-                        <div className="fw-semibold" style={{ color: '#1e293b' }}>{showView.doctor || '—'}</div>
+                  <div className="d-flex flex-column gap-2" style={{ fontSize: 13 }}>
+                    <div className="d-flex align-items-center gap-2 p-2 rounded-2" style={{ backgroundColor: '#f8fafc' }}>
+                      <User size={15} color="#10b981" style={{ flexShrink: 0 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Doctor/Staff</div>
+                        <div className="fw-semibold text-truncate" style={{ color: '#0f172a', fontSize: 13 }}>{showView.doctor || '—'}</div>
                       </div>
                     </div>
-                    <div className="d-flex align-items-start gap-3 p-3 rounded-3" style={{ backgroundColor: '#f8fafc' }}>
-                      <Calendar size={20} color="#0891b2" style={{ flexShrink: 0 }} />
-                      <div>
-                        <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Date of Visit</div>
-                        <div className="fw-semibold" style={{ color: '#1e293b' }}>
-                          {new Date(showView.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="d-flex align-items-start gap-3 p-3 rounded-3" style={{ backgroundColor: '#f8fafc' }}>
-                      <Clock size={20} color="#7c3aed" style={{ flexShrink: 0 }} />
-                      <div>
-                        <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>Record Created</div>
-                        <div className="fw-semibold" style={{ color: '#1e293b' }}>
-                          {showView.created_at ? new Date(showView.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A'}
+                    <div className="d-flex align-items-center gap-2 p-2 rounded-2" style={{ backgroundColor: '#f8fafc' }}>
+                      <Calendar size={15} color="#0891b2" style={{ flexShrink: 0 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Date of Visit</div>
+                        <div className="fw-semibold" style={{ color: '#0f172a', fontSize: 13 }}>
+                          {new Date(showView.date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
                         </div>
                       </div>
                     </div>
@@ -440,11 +423,11 @@ const HealthRecords = () => {
               {/* Clinical Notes */}
               {showView.notes && (
                 <Col xs={12}>
-                  <div className="rounded-4 p-4" style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>
-                    <div className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ fontSize: 15, color: '#1e293b' }}>
-                      <FileText size={18} color="#f59e0b" /> Clinical Notes
+                  <div className="rounded-3 p-3" style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>
+                    <div className="fw-bold mb-2 d-flex align-items-center gap-2" style={{ fontSize: 13, color: '#0f172a' }}>
+                      <FileText size={15} color="#f59e0b" /> Clinical Notes
                     </div>
-                    <div className="p-3 rounded-3" style={{ backgroundColor: '#fffbeb', border: '1px solid #fef3c7', fontSize: 14, color: '#78350f', lineHeight: 1.6 }}>
+                    <div className="p-2 rounded-2" style={{ backgroundColor: '#fffbeb', border: '1px solid #fef3c7', fontSize: 13, color: '#78350f', lineHeight: 1.5 }}>
                       {showView.notes}
                     </div>
                   </div>
@@ -453,36 +436,36 @@ const HealthRecords = () => {
 
               {/* Status Timeline */}
               <Col xs={12}>
-                <div className="rounded-4 p-4" style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>
-                  <div className="fw-bold mb-3 d-flex align-items-center gap-2" style={{ fontSize: 15, color: '#1e293b' }}>
-                    <Activity size={18} color="#16a34a" /> Treatment Status
+                <div className="rounded-3 p-3" style={{ backgroundColor: '#fff', border: '1px solid #e2e8f0' }}>
+                  <div className="fw-bold mb-2 d-flex align-items-center gap-2" style={{ fontSize: 13, color: '#0f172a' }}>
+                    <Activity size={15} color="#10b981" /> Treatment Status
                   </div>
-                  <div className="d-flex align-items-center gap-2" style={{ fontSize: 14 }}>
+                  <div className="d-flex align-items-center gap-2" style={{ fontSize: 13 }}>
                     {['ongoing', 'follow-up', 'closed'].map((s, idx) => (
                       <React.Fragment key={s}>
                         <div className="d-flex flex-column align-items-center" style={{ flex: 1 }}>
                           <div className="d-flex align-items-center justify-content-center rounded-circle" style={{
-                            width: 36, height: 36,
-                            backgroundColor: ['ongoing', 'follow-up', 'closed'].indexOf(showView.status) >= idx ? statusVariant[showView.status].bg : '#e5e7eb',
-                            color: ['ongoing', 'follow-up', 'closed'].indexOf(showView.status) >= idx ? statusVariant[showView.status].color : '#9ca3af',
-                            border: `2px solid ${['ongoing', 'follow-up', 'closed'].indexOf(showView.status) >= idx ? statusVariant[showView.status].border : '#d1d5db'}`,
-                            fontSize: 12, fontWeight: 700
+                            width: 28, height: 28,
+                            backgroundColor: ['ongoing', 'follow-up', 'closed'].indexOf(showView.status) >= idx ? statusVariant[showView.status].bg : '#f1f5f9',
+                            color: ['ongoing', 'follow-up', 'closed'].indexOf(showView.status) >= idx ? statusVariant[showView.status].color : '#94a3b8',
+                            border: `2px solid ${['ongoing', 'follow-up', 'closed'].indexOf(showView.status) >= idx ? statusVariant[showView.status].border : '#e2e8f0'}`,
+                            fontSize: 11, fontWeight: 700
                           }}>
                             {idx + 1}
                           </div>
-                          <div className="mt-2 fw-semibold text-center" style={{ 
-                            fontSize: 11, 
-                            color: ['ongoing', 'follow-up', 'closed'].indexOf(showView.status) >= idx ? statusVariant[showView.status].color : '#9ca3af', 
-                            textTransform: 'capitalize' 
+                          <div className="mt-1 fw-semibold text-center" style={{
+                            fontSize: 10,
+                            color: ['ongoing', 'follow-up', 'closed'].indexOf(showView.status) >= idx ? statusVariant[showView.status].color : '#94a3b8',
+                            textTransform: 'capitalize'
                           }}>
                             {s === 'follow-up' ? 'Follow-up' : s}
                           </div>
                         </div>
                         {idx < 2 && (
-                          <div style={{ 
-                            flex: 0.5, 
-                            height: 2, 
-                            backgroundColor: ['ongoing', 'follow-up', 'closed'].indexOf(showView.status) > idx ? statusVariant[showView.status].border : '#e5e7eb' 
+                          <div style={{
+                            flex: 0.5,
+                            height: 2,
+                            backgroundColor: ['ongoing', 'follow-up', 'closed'].indexOf(showView.status) > idx ? statusVariant[showView.status].border : '#e2e8f0'
                           }} />
                         )}
                       </React.Fragment>
@@ -493,16 +476,16 @@ const HealthRecords = () => {
             </Row>
           </Modal.Body>
         )}
-        <Modal.Footer className="justify-content-between p-4" style={{ backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+        <Modal.Footer className="justify-content-between p-3" style={{ borderTop: '1px solid #f1f5f9' }}>
           <div className="d-flex gap-2">
-            <Button size="md" variant="light" className="d-flex align-items-center gap-2 border" onClick={() => { setShowView(null); openEdit(showView); }}>
-              <Edit3 size={16} /> Edit Record
+            <Button size="sm" variant="light" className="d-flex align-items-center gap-1 border" onClick={() => { setShowView(null); openEdit(showView); }}>
+              <Edit3 size={14} /> Edit
             </Button>
-            <Button size="md" variant="light" className="d-flex align-items-center gap-2 border text-danger" onClick={() => { setConfirmDelete(showView); setShowView(null); }}>
-              <Trash2 size={16} /> Delete
+            <Button size="sm" variant="light" className="d-flex align-items-center gap-1 border text-danger" onClick={() => { setConfirmDelete(showView); setShowView(null); }}>
+              <Trash2 size={14} /> Delete
             </Button>
           </div>
-          <Button size="md" variant="secondary" onClick={() => setShowView(null)}>Close</Button>
+          <Button size="sm" variant="secondary" onClick={() => setShowView(null)}>Close</Button>
         </Modal.Footer>
       </Modal>
 
