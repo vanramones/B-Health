@@ -1,10 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { Card, Row, Col, Form, Button, Table, Badge, Dropdown } from 'react-bootstrap';
+import { Card, Row, Col, Form, Button, Table, Badge, Dropdown, ButtonGroup } from 'react-bootstrap';
 import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { Download, FileText, TrendingUp, Users, Activity, Syringe, Printer, FileSpreadsheet, File } from 'lucide-react';
+import { Download, FileText, TrendingUp, Users, Activity, Syringe, Printer, FileSpreadsheet, File, Calendar } from 'lucide-react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 const monthlyData = [
   { month: 'Jan', appointments: 42, completed: 38, vaccinations: 18 },
@@ -45,6 +47,9 @@ const downloadCSV = (filename, headers, rows) => {
 
 const Reports = () => {
   const [range, setRange] = useState('8m');
+  const [dateMode, setDateMode] = useState('monthly'); // 'weekly' or 'monthly'
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date());
 
   const filteredMonthly = useMemo(() => {
     if (range === '3m') return monthlyData.slice(-3);
@@ -81,6 +86,13 @@ const Reports = () => {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleGenerateReport = () => {
+    const formattedStart = startDate.toLocaleDateString('en-US');
+    const formattedEnd = endDate.toLocaleDateString('en-US');
+    alert(`Generating ${dateMode} report from ${formattedStart} to ${formattedEnd}`);
+    // Here you would typically fetch data based on the selected date range
   };
 
   const handleExportJSON = () => {
@@ -157,6 +169,86 @@ const Reports = () => {
                 </Dropdown.Item>
               </Dropdown.Menu>
             </Dropdown>
+          </div>
+        </Card.Body>
+      </Card>
+
+      {/* Custom Date Range Picker */}
+      <Card className="border rounded-4 mb-4" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+        <Card.Body className="p-3">
+          <div className="d-flex flex-wrap align-items-center gap-3">
+            <div className="d-flex align-items-center gap-2">
+              <Calendar size={16} color="#16a34a" />
+              <span className="fw-semibold" style={{ fontSize: 13, color: '#111827' }}>Custom Date Range</span>
+            </div>
+            
+            <ButtonGroup size="sm">
+              <Button
+                variant={dateMode === 'weekly' ? 'primary' : 'outline-secondary'}
+                onClick={() => setDateMode('weekly')}
+                style={{ fontSize: 12, fontWeight: 500 }}
+              >
+                Weekly
+              </Button>
+              <Button
+                variant={dateMode === 'monthly' ? 'primary' : 'outline-secondary'}
+                onClick={() => setDateMode('monthly')}
+                style={{ fontSize: 12, fontWeight: 500 }}
+              >
+                Monthly
+              </Button>
+            </ButtonGroup>
+
+            <div className="d-flex align-items-center gap-2">
+              <DatePicker
+                selected={startDate}
+                onChange={(date) => setStartDate(date)}
+                selectsStart
+                startDate={startDate}
+                endDate={endDate}
+                dateFormat={dateMode === 'weekly' ? 'MM/dd/yyyy' : 'MM/yyyy'}
+                showMonthYearPicker={dateMode === 'monthly'}
+                showWeekNumbers={dateMode === 'weekly'}
+                className="form-control form-control-sm"
+                style={{ fontSize: 12, width: 130 }}
+                placeholderText="Start Date"
+              />
+              <span style={{ color: '#6b7280' }}>to</span>
+              <DatePicker
+                selected={endDate}
+                onChange={(date) => setEndDate(date)}
+                selectsEnd
+                startDate={startDate}
+                endDate={endDate}
+                minDate={startDate}
+                dateFormat={dateMode === 'weekly' ? 'MM/dd/yyyy' : 'MM/yyyy'}
+                showMonthYearPicker={dateMode === 'monthly'}
+                showWeekNumbers={dateMode === 'weekly'}
+                className="form-control form-control-sm"
+                style={{ fontSize: 12, width: 130 }}
+                placeholderText="End Date"
+              />
+            </div>
+
+            <Button
+              size="sm"
+              variant="success"
+              onClick={handleGenerateReport}
+              className="d-flex align-items-center gap-1"
+              style={{ fontSize: 12, fontWeight: 500 }}
+            >
+              <FileText size={14} /> Generate
+            </Button>
+
+            <Button
+              size="sm"
+              variant="light"
+              onClick={handlePrint}
+              className="d-flex align-items-center gap-1 border"
+              style={{ fontSize: 12, fontWeight: 500 }}
+            >
+              <Printer size={14} /> Print
+            </Button>
           </div>
         </Card.Body>
       </Card>
