@@ -1,52 +1,17 @@
-import React, { useMemo, useState, useRef } from 'react';
-import { Card, Row, Col, Form, Button, Table, Badge, Dropdown, ButtonGroup, Modal, OverlayTrigger, Tooltip as BsTooltip } from 'react-bootstrap';
+import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { Card, Row, Col, Button, Table, Badge, Dropdown, Modal, Spinner } from 'react-bootstrap';
 import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import {
-  Download, FileText, TrendingUp, Users, Activity, Syringe, Printer,
-  FileSpreadsheet, File, Calendar, ChevronLeft, ChevronRight, Clock,
-  CheckCircle2, ArrowUpRight, ArrowDownRight, BarChart3, PieChart as PieChartIcon,
-  Filter, RefreshCw, Eye,
+  Download, FileText, TrendingUp, Activity, Syringe, Printer,
+  FileSpreadsheet, File, Calendar, CheckCircle2, ArrowUpRight,
+  ArrowDownRight, BarChart3, RefreshCw, Loader,
 } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-
-/* ── Static data ── */
-const monthlyData = [
-  { month: 'Jan', appointments: 42, completed: 38, vaccinations: 18 },
-  { month: 'Feb', appointments: 55, completed: 49, vaccinations: 22 },
-  { month: 'Mar', appointments: 61, completed: 54, vaccinations: 26 },
-  { month: 'Apr', appointments: 48, completed: 45, vaccinations: 19 },
-  { month: 'May', appointments: 72, completed: 65, vaccinations: 31 },
-  { month: 'Jun', appointments: 68, completed: 60, vaccinations: 28 },
-  { month: 'Jul', appointments: 80, completed: 72, vaccinations: 35 },
-  { month: 'Aug', appointments: 75, completed: 70, vaccinations: 33 },
-  { month: 'Sep', appointments: 65, completed: 58, vaccinations: 27 },
-];
-
-const weeklyData = [
-  { week: 'Week 1', appointments: 18, completed: 16, vaccinations: 7 },
-  { week: 'Week 2', appointments: 22, completed: 19, vaccinations: 9 },
-  { week: 'Week 3', appointments: 15, completed: 14, vaccinations: 5 },
-  { week: 'Week 4', appointments: 20, completed: 18, vaccinations: 8 },
-];
-
-const serviceBreakdown = [
-  { name: 'Consultation', value: 145, color: '#16a34a', pct: 38 },
-  { name: 'Vaccination',  value: 98,  color: '#3b82f6', pct: 26 },
-  { name: 'Prenatal',     value: 64,  color: '#f59e0b', pct: 17 },
-  { name: 'Dental',       value: 42,  color: '#ec4899', pct: 11 },
-  { name: 'Other',        value: 28,  color: '#a855f7', pct: 8  },
-];
-
-const recentReports = [
-  { id: 1, name: 'Monthly Summary - August 2026',  type: 'Monthly',   date: '2026-08-31', size: '124 KB', status: 'Ready' },
-  { id: 2, name: 'Vaccination Report - Q3',        type: 'Quarterly', date: '2026-07-15', size: '210 KB', status: 'Ready' },
-  { id: 3, name: 'Resident Demographics',          type: 'Annual',    date: '2026-06-01', size: '312 KB', status: 'Ready' },
-  { id: 4, name: 'Appointment Trends - July',      type: 'Monthly',   date: '2026-07-31', size: '98 KB',  status: 'Ready' },
-];
+import { supabase } from '../../config/supabase';
 
 /* ── Helpers ── */
 const downloadCSV = (filename, headers, rows) => {
@@ -57,10 +22,15 @@ const downloadCSV = (filename, headers, rows) => {
   a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 };
+const fmtNum = (n) => (n ?? 0).toLocaleString();
 
-const fmtNum = (n) => n.toLocaleString();
+const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const SERVICE_COLORS = {
+  Consultation: '#16a34a', Vaccination: '#3b82f6', Prenatal: '#f59e0b',
+  Dental: '#ec4899', Other: '#a855f7',
+};
 
-/* ── Custom tooltip for charts ── */
+/* ── Custom tooltip ── */
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -80,54 +50,187 @@ const ChartTooltip = ({ active, payload, label }) => {
   );
 };
 
-/* ── Main component ── */
+/* ════════════════ Main Component ════════════════ */
 const Reports = () => {
   const [dateMode, setDateMode] = useState('monthly');
   const [startDate, setStartDate] = useState(() => {
-    const d = new Date(); d.setMonth(d.getMonth() - 2); return d;
+    const d = new Date(); d.setMonth(d.getMonth() - 8); d.setDate(1); return d;
   });
   const [endDate, setEndDate] = useState(new Date());
   const [showPreview, setShowPreview] = useState(false);
   const [activeChart, setActiveChart] = useState('bar');
+  const [loading, setLoading] = useState(true);
   const printRef = useRef(null);
 
-  const chartData = dateMode === 'weekly' ? weeklyData : monthlyData;
+  /* ── Live data state ── */
+  const [appointments, setAppointments] = useState([]);
+  const [vaccinations, setVaccinations] = useState([]);
+  const [services, setServices] = useState([]);
+
+  /* ── Fetch real data from Supabase ── */
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const isoStart = startDate ? startDate.toISOString().slice(0, 10) : '2020-01-01';
+      const isoEnd = endDate ? endDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+
+      const [apptRes, vaccRes, svcRes] = await Promise.all([
+        supabase.from('appointments').select('id, date, status, service, created_at')
+          .is('deleted_at', null).gte('date', isoStart).lte('date', isoEnd)
+          .order('date', { ascending: true }),
+        supabase.from('vaccinations').select('id, date, status, vaccine, created_at')
+          .is('deleted_at', null).gte('date', isoStart).lte('date', isoEnd)
+          .order('date', { ascending: true }),
+        supabase.from('services').select('id, name, category')
+          .is('deleted_at', null),
+      ]);
+
+      setAppointments(apptRes.data || []);
+      setVaccinations(vaccRes.data || []);
+      setServices(svcRes.data || []);
+    } catch (err) {
+      console.error('Reports fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [startDate, endDate]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  /* ── Realtime subscription ── */
+  useEffect(() => {
+    const ch = supabase
+      .channel('reports-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vaccinations' }, () => fetchData())
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [fetchData]);
+
+  /* ── Compute chart data from real records ── */
+  const chartData = useMemo(() => {
+    if (dateMode === 'monthly') {
+      const map = {};
+      appointments.forEach(a => {
+        if (!a.date) return;
+        const d = new Date(a.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+        if (!map[key]) map[key] = { month: MONTH_NAMES[d.getMonth()], appointments: 0, completed: 0, vaccinations: 0, sortKey: key };
+        map[key].appointments += 1;
+        if (a.status === 'completed') map[key].completed += 1;
+      });
+      vaccinations.forEach(v => {
+        if (!v.date) return;
+        const d = new Date(v.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
+        if (!map[key]) map[key] = { month: MONTH_NAMES[d.getMonth()], appointments: 0, completed: 0, vaccinations: 0, sortKey: key };
+        map[key].vaccinations += 1;
+      });
+      return Object.values(map).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+    }
+    // weekly
+    const map = {};
+    const getWeekKey = (dateStr) => {
+      const d = new Date(dateStr);
+      const startOfYear = new Date(d.getFullYear(), 0, 1);
+      const weekNum = Math.ceil(((d - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
+      return { key: `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`, label: `Week ${weekNum}` };
+    };
+    appointments.forEach(a => {
+      if (!a.date) return;
+      const { key, label } = getWeekKey(a.date);
+      if (!map[key]) map[key] = { week: label, appointments: 0, completed: 0, vaccinations: 0, sortKey: key };
+      map[key].appointments += 1;
+      if (a.status === 'completed') map[key].completed += 1;
+    });
+    vaccinations.forEach(v => {
+      if (!v.date) return;
+      const { key, label } = getWeekKey(v.date);
+      if (!map[key]) map[key] = { week: label, appointments: 0, completed: 0, vaccinations: 0, sortKey: key };
+      map[key].vaccinations += 1;
+    });
+    return Object.values(map).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  }, [appointments, vaccinations, dateMode]);
+
   const xKey = dateMode === 'weekly' ? 'week' : 'month';
 
+  /* ── Totals from real data ── */
   const totals = useMemo(() => {
-    const sum = (k) => chartData.reduce((s, x) => s + x[k], 0);
-    const ta = sum('appointments');
-    const tc = sum('completed');
-    const tv = sum('vaccinations');
+    const ta = appointments.length;
+    const tc = appointments.filter(a => a.status === 'completed').length;
+    const tv = vaccinations.length;
     const rate = ta ? Math.round((tc / ta) * 100) : 0;
     return { totalAppointments: ta, totalCompleted: tc, totalVaccinations: tv, completionRate: rate };
-  }, [chartData]);
+  }, [appointments, vaccinations]);
 
-  const prevTotals = { totalAppointments: 460, totalCompleted: 410, totalVaccinations: 190 };
+  /* ── Previous period comparison (shift date range back by same duration) ── */
+  const [prevTotals, setPrevTotals] = useState({ totalAppointments: 0, totalCompleted: 0, totalVaccinations: 0 });
+
+  useEffect(() => {
+    if (!startDate || !endDate) return;
+    const duration = endDate.getTime() - startDate.getTime();
+    const prevEnd = new Date(startDate.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - duration);
+    const ps = prevStart.toISOString().slice(0, 10);
+    const pe = prevEnd.toISOString().slice(0, 10);
+
+    (async () => {
+      try {
+        const [apptPrev, vaccPrev] = await Promise.all([
+          supabase.from('appointments').select('id, status')
+            .is('deleted_at', null).gte('date', ps).lte('date', pe),
+          supabase.from('vaccinations').select('id')
+            .is('deleted_at', null).gte('date', ps).lte('date', pe),
+        ]);
+        const pa = apptPrev.data || [];
+        setPrevTotals({
+          totalAppointments: pa.length,
+          totalCompleted: pa.filter(a => a.status === 'completed').length,
+          totalVaccinations: (vaccPrev.data || []).length,
+        });
+      } catch { /* ignore */ }
+    })();
+  }, [startDate, endDate]);
 
   const pctChange = (curr, prev) => {
-    if (!prev) return 0;
+    if (!prev) return curr > 0 ? 100 : 0;
     return Math.round(((curr - prev) / prev) * 100);
   };
 
+  /* ── Service breakdown from real appointments ── */
+  const serviceBreakdown = useMemo(() => {
+    const map = {};
+    appointments.forEach(a => {
+      const svc = a.service || 'Other';
+      const name = Object.keys(SERVICE_COLORS).find(k => svc.toLowerCase().includes(k.toLowerCase())) || 'Other';
+      map[name] = (map[name] || 0) + 1;
+    });
+    const total = Object.values(map).reduce((s, v) => s + v, 0) || 1;
+    return Object.entries(map)
+      .map(([name, value]) => ({
+        name, value,
+        color: SERVICE_COLORS[name] || '#a855f7',
+        pct: Math.round((value / total) * 100),
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [appointments]);
+
+  /* ── Export handlers ── */
   const handleExportSummary = () => {
     downloadCSV('report-summary.csv',
       [dateMode === 'weekly' ? 'Week' : 'Month', 'Appointments', 'Completed', 'Vaccinations'],
       chartData.map(m => [m[xKey], m.appointments, m.completed, m.vaccinations]),
     );
   };
-
   const handleExportServices = () => {
     downloadCSV('service-breakdown.csv', ['Service', 'Count', 'Percentage'],
       serviceBreakdown.map(s => [s.name, s.value, `${s.pct}%`]),
     );
   };
-
   const handleExportJSON = () => {
     const data = {
-      generatedAt: new Date().toISOString(),
-      mode: dateMode,
-      dateRange: { start: startDate.toISOString(), end: endDate.toISOString() },
+      generatedAt: new Date().toISOString(), mode: dateMode,
+      dateRange: { start: startDate?.toISOString(), end: endDate?.toISOString() },
       summary: totals, chartData, serviceBreakdown,
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -136,14 +239,10 @@ const Reports = () => {
     a.href = url; a.download = `health-report-${new Date().toISOString().split('T')[0]}.json`; a.click();
     URL.revokeObjectURL(url);
   };
-
   const handlePrint = () => window.print();
+  const handleGenerate = () => { fetchData(); setShowPreview(true); };
 
-  const handleGenerate = () => {
-    setShowPreview(true);
-  };
-
-  /* ── Stat cards config ── */
+  /* ── Stat cards ── */
   const summaryCards = [
     {
       label: 'Total Appointments', value: totals.totalAppointments,
@@ -163,7 +262,10 @@ const Reports = () => {
     {
       label: 'Completion Rate', value: `${totals.completionRate}%`,
       icon: <TrendingUp size={20} />, bg: 'linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%)',
-      color: '#be185d', change: 2, suffix: true,
+      color: '#be185d',
+      change: prevTotals.totalAppointments
+        ? pctChange(totals.completionRate, prevTotals.totalAppointments ? Math.round((prevTotals.totalCompleted / prevTotals.totalAppointments) * 100) : 0)
+        : 0,
     },
   ];
 
@@ -175,9 +277,35 @@ const Reports = () => {
   };
   const dateLabel = `${fmtDate(startDate, dateMode)} - ${fmtDate(endDate, dateMode)}`;
 
+  /* ── Generated reports list (from real data) ── */
+  const recentReports = useMemo(() => {
+    const now = new Date();
+    const reports = [];
+    for (let i = 0; i < 4; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthName = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+      const monthAppts = appointments.filter(a => {
+        if (!a.date) return false;
+        const ad = new Date(a.date);
+        return ad.getMonth() === d.getMonth() && ad.getFullYear() === d.getFullYear();
+      });
+      if (monthAppts.length > 0 || i === 0) {
+        reports.push({
+          id: i + 1,
+          name: `Monthly Summary - ${monthName}`,
+          type: 'Monthly',
+          date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`,
+          records: monthAppts.length,
+          status: 'Ready',
+        });
+      }
+    }
+    return reports;
+  }, [appointments]);
+
   return (
     <div className="p-4" style={{ backgroundColor: '#f8fafc' }} ref={printRef}>
-      {/* ── Header Bar ── */}
+      {/* ── Header ── */}
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
         <div>
           <h5 className="fw-bold mb-1" style={{ color: '#111827', letterSpacing: '-0.01em' }}>
@@ -185,6 +313,7 @@ const Reports = () => {
           </h5>
           <p style={{ fontSize: 12, color: '#9ca3af', margin: 0 }}>
             Health center performance overview &bull; {dateLabel}
+            {loading && <Spinner animation="border" size="sm" className="ms-2" style={{ width: 12, height: 12, borderWidth: 2 }} />}
           </p>
         </div>
         <div className="d-flex align-items-center gap-2 flex-wrap">
@@ -214,7 +343,7 @@ const Reports = () => {
         </div>
       </div>
 
-      {/* ── Date Range Picker Card ── */}
+      {/* ── Date Range Picker ── */}
       <Card className="border-0 rounded-4 mb-4 bh-report-date-card" style={{
         background: 'linear-gradient(135deg, #064e3b 0%, #047857 50%, #0f766e 100%)',
         boxShadow: '0 4px 20px rgba(6, 78, 59, 0.25)',
@@ -224,7 +353,7 @@ const Reports = () => {
             <Col xs={12} md="auto">
               <div className="d-flex align-items-center gap-2 mb-2 mb-md-0">
                 <div className="d-flex align-items-center justify-content-center rounded-3"
-                  style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)' }}>
+                  style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.15)' }}>
                   <Calendar size={18} color="#fff" />
                 </div>
                 <div>
@@ -236,29 +365,20 @@ const Reports = () => {
 
             <Col xs={12} md="auto">
               <div className="d-flex align-items-center gap-1 p-1 rounded-3"
-                style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)' }}>
-                <button
-                  onClick={() => setDateMode('weekly')}
-                  className="border-0 rounded-2 px-3 py-1"
-                  style={{
-                    fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                    background: dateMode === 'weekly' ? '#fff' : 'transparent',
-                    color: dateMode === 'weekly' ? '#047857' : 'rgba(255,255,255,0.8)',
-                    boxShadow: dateMode === 'weekly' ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
-                  }}>
-                  Weekly
-                </button>
-                <button
-                  onClick={() => setDateMode('monthly')}
-                  className="border-0 rounded-2 px-3 py-1"
-                  style={{
-                    fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
-                    background: dateMode === 'monthly' ? '#fff' : 'transparent',
-                    color: dateMode === 'monthly' ? '#047857' : 'rgba(255,255,255,0.8)',
-                    boxShadow: dateMode === 'monthly' ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
-                  }}>
-                  Monthly
-                </button>
+                style={{ background: 'rgba(255,255,255,0.12)' }}>
+                {['weekly', 'monthly'].map(m => (
+                  <button key={m} onClick={() => setDateMode(m)}
+                    className="border-0 rounded-2 px-3 py-1"
+                    style={{
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                      background: dateMode === m ? '#fff' : 'transparent',
+                      color: dateMode === m ? '#047857' : 'rgba(255,255,255,0.8)',
+                      boxShadow: dateMode === m ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
+                      textTransform: 'capitalize',
+                    }}>
+                    {m}
+                  </button>
+                ))}
               </div>
             </Col>
 
@@ -266,11 +386,7 @@ const Reports = () => {
               <div className="bh-dp-wrapper">
                 <DatePicker
                   selected={startDate}
-                  onChange={(dates) => {
-                    const [start, end] = dates;
-                    setStartDate(start);
-                    setEndDate(end);
-                  }}
+                  onChange={(dates) => { const [s, e] = dates; setStartDate(s); setEndDate(e); }}
                   startDate={startDate}
                   endDate={endDate}
                   selectsRange
@@ -292,8 +408,7 @@ const Reports = () => {
                   className="border-0 rounded-3 px-4 py-2 d-flex align-items-center gap-2"
                   style={{
                     background: '#fff', color: '#047857', fontSize: 13, fontWeight: 600,
-                    cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-                    transition: 'all 0.2s',
+                    cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.12)', transition: 'all 0.2s',
                   }}>
                   <RefreshCw size={14} /> Generate
                 </button>
@@ -301,8 +416,7 @@ const Reports = () => {
                   className="border-0 rounded-3 px-3 py-2 d-flex align-items-center gap-2"
                   style={{
                     background: 'rgba(255,255,255,0.15)', color: '#fff', fontSize: 13,
-                    fontWeight: 500, cursor: 'pointer', backdropFilter: 'blur(4px)',
-                    transition: 'all 0.2s',
+                    fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s',
                   }}>
                   <Printer size={14} /> Print
                 </button>
@@ -312,7 +426,7 @@ const Reports = () => {
         </Card.Body>
       </Card>
 
-      {/* ── Summary Stat Cards ── */}
+      {/* ── Summary Cards ── */}
       <Row className="g-3 mb-4 bh-stagger">
         {summaryCards.map((c) => (
           <Col key={c.label} xs={6} lg={3}>
@@ -336,11 +450,8 @@ const Reports = () => {
                     </span>
                   )}
                 </div>
-                <div className="fw-bold" style={{
-                  fontSize: 30, color: '#111827', lineHeight: 1,
-                  letterSpacing: '-0.03em',
-                }}>
-                  {typeof c.value === 'number' ? fmtNum(c.value) : c.value}
+                <div className="fw-bold" style={{ fontSize: 30, color: '#111827', lineHeight: 1, letterSpacing: '-0.03em' }}>
+                  {loading ? <Spinner animation="border" size="sm" /> : (typeof c.value === 'number' ? fmtNum(c.value) : c.value)}
                 </div>
                 <div className="mt-1" style={{ fontSize: 12, color: '#6b7280', fontWeight: 500 }}>{c.label}</div>
               </Card.Body>
@@ -349,24 +460,20 @@ const Reports = () => {
         ))}
       </Row>
 
-      {/* ── Charts Row ── */}
+      {/* ── Charts ── */}
       <Row className="g-3 mb-4">
         <Col xs={12} lg={8}>
-          <Card className="border-0 rounded-4 h-100 bh-fade-up"
-            style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
+          <Card className="border-0 rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
             <Card.Body className="p-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
                 <div>
-                  <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>
-                    Appointments vs Completed
-                  </span>
+                  <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>Appointments vs Completed</span>
                   <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                    {dateMode === 'weekly' ? 'Weekly' : 'Monthly'} comparison
+                    {dateMode === 'weekly' ? 'Weekly' : 'Monthly'} comparison &bull; {appointments.length} records
                   </div>
                 </div>
                 <div className="d-flex align-items-center gap-2">
-                  <div className="d-flex align-items-center gap-3 me-3"
-                    style={{ fontSize: 11, color: '#6b7280', fontWeight: 500 }}>
+                  <div className="d-flex align-items-center gap-3 me-3" style={{ fontSize: 11, color: '#6b7280', fontWeight: 500 }}>
                     <span className="d-flex align-items-center gap-1">
                       <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />
                       Appointments
@@ -388,37 +495,41 @@ const Reports = () => {
                   </div>
                 </div>
               </div>
-              <ResponsiveContainer width="100%" height={280}>
-                {activeChart === 'bar' ? (
-                  <BarChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="gBar1" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#3b82f6" />
-                        <stop offset="100%" stopColor="#2563eb" />
-                      </linearGradient>
-                      <linearGradient id="gBar2" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#22c55e" />
-                        <stop offset="100%" stopColor="#16a34a" />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                    <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Bar dataKey="appointments" fill="url(#gBar1)" radius={[6, 6, 0, 0]} barSize={dateMode === 'weekly' ? 32 : 20} />
-                    <Bar dataKey="completed" fill="url(#gBar2)" radius={[6, 6, 0, 0]} barSize={dateMode === 'weekly' ? 32 : 20} />
-                  </BarChart>
-                ) : (
-                  <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                    <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Line type="monotone" dataKey="appointments" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4, fill: '#3b82f6' }} />
-                    <Line type="monotone" dataKey="completed" stroke="#16a34a" strokeWidth={2.5} dot={{ r: 4, fill: '#16a34a' }} />
-                  </LineChart>
-                )}
-              </ResponsiveContainer>
+              {chartData.length === 0 && !loading ? (
+                <div className="d-flex align-items-center justify-content-center" style={{ height: 280, color: '#9ca3af', fontSize: 13 }}>
+                  No appointment data for this period
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  {activeChart === 'bar' ? (
+                    <BarChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="gBar1" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#3b82f6" /><stop offset="100%" stopColor="#2563eb" />
+                        </linearGradient>
+                        <linearGradient id="gBar2" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#22c55e" /><stop offset="100%" stopColor="#16a34a" />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                      <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Bar dataKey="appointments" fill="url(#gBar1)" radius={[6, 6, 0, 0]} barSize={dateMode === 'weekly' ? 28 : 18} />
+                      <Bar dataKey="completed" fill="url(#gBar2)" radius={[6, 6, 0, 0]} barSize={dateMode === 'weekly' ? 28 : 18} />
+                    </BarChart>
+                  ) : (
+                    <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                      <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Line type="monotone" dataKey="appointments" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4, fill: '#3b82f6' }} />
+                      <Line type="monotone" dataKey="completed" stroke="#16a34a" strokeWidth={2.5} dot={{ r: 4, fill: '#16a34a' }} />
+                    </LineChart>
+                  )}
+                </ResponsiveContainer>
+              )}
             </Card.Body>
           </Card>
         </Col>
@@ -430,30 +541,33 @@ const Reports = () => {
               <div className="d-flex justify-content-between align-items-center mb-3">
                 <div>
                   <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>Service Breakdown</span>
-                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{serviceBreakdown.reduce((s, x) => s + x.value, 0)} total services</div>
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{appointments.length} total appointments</div>
                 </div>
                 <button className="border-0 p-1 rounded-2 bg-transparent" onClick={handleExportServices} title="Export">
                   <Download size={14} color="#6b7280" />
                 </button>
               </div>
-              <ResponsiveContainer width="100%" height={170}>
-                <PieChart>
-                  <Pie data={serviceBreakdown} dataKey="value" nameKey="name"
-                    innerRadius={48} outerRadius={72} paddingAngle={3} strokeWidth={0}>
-                    {serviceBreakdown.map((s, i) => <Cell key={i} fill={s.color} />)}
-                  </Pie>
-                  <Tooltip content={<ChartTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
+              {serviceBreakdown.length === 0 ? (
+                <div className="d-flex align-items-center justify-content-center" style={{ height: 170, color: '#9ca3af', fontSize: 13 }}>
+                  No services data
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={170}>
+                  <PieChart>
+                    <Pie data={serviceBreakdown} dataKey="value" nameKey="name"
+                      innerRadius={48} outerRadius={72} paddingAngle={3} strokeWidth={0}>
+                      {serviceBreakdown.map((s, i) => <Cell key={i} fill={s.color} />)}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
               <div className="d-flex flex-column gap-2 mt-3">
                 {serviceBreakdown.map((s) => (
                   <div key={s.name} className="d-flex align-items-center gap-2" style={{ fontSize: 12 }}>
-                    <span style={{
-                      width: 10, height: 10, borderRadius: 3, backgroundColor: s.color,
-                      display: 'inline-block', flexShrink: 0,
-                    }} />
+                    <span style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: s.color, display: 'inline-block', flexShrink: 0 }} />
                     <span style={{ color: '#374151', fontWeight: 500, flex: 1 }}>{s.name}</span>
-                    <div className="flex-grow-1 mx-2" style={{ height: 4, background: '#f3f4f6', borderRadius: 2, position: 'relative', maxWidth: 60 }}>
+                    <div className="flex-grow-1 mx-2" style={{ height: 4, background: '#f3f4f6', borderRadius: 2, maxWidth: 60 }}>
                       <div style={{ width: `${s.pct}%`, height: '100%', background: s.color, borderRadius: 2, transition: 'width 0.6s ease' }} />
                     </div>
                     <span style={{ color: '#6b7280', fontWeight: 600, minWidth: 28, textAlign: 'right' }}>{s.value}</span>
@@ -475,24 +589,30 @@ const Reports = () => {
               <div style={{ fontSize: 11, color: '#9ca3af' }}>{dateMode === 'weekly' ? 'Weekly' : 'Monthly'} vaccination count</div>
             </div>
             <Badge pill style={{ background: '#fef3c7', color: '#b45309', fontWeight: 600, fontSize: 11, padding: '6px 12px' }}>
-              <Syringe size={12} className="me-1" /> {totals.totalVaccinations} total
+              <Syringe size={12} className="me-1" /> {fmtNum(totals.totalVaccinations)} total
             </Badge>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gVacc" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-              <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-              <Tooltip content={<ChartTooltip />} />
-              <Area type="monotone" dataKey="vaccinations" stroke="#f59e0b" strokeWidth={2.5} fill="url(#gVacc)" dot={{ r: 3, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }} />
-            </AreaChart>
-          </ResponsiveContainer>
+          {chartData.length === 0 && !loading ? (
+            <div className="d-flex align-items-center justify-content-center" style={{ height: 200, color: '#9ca3af', fontSize: 13 }}>
+              No vaccination data for this period
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gVacc" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area type="monotone" dataKey="vaccinations" stroke="#f59e0b" strokeWidth={2.5} fill="url(#gVacc)" dot={{ r: 3, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
         </Card.Body>
       </Card>
 
@@ -513,7 +633,7 @@ const Reports = () => {
                   <th className="px-4 py-3 border-0">Report Name</th>
                   <th className="py-3 border-0">Type</th>
                   <th className="py-3 border-0">Date</th>
-                  <th className="py-3 border-0">Size</th>
+                  <th className="py-3 border-0">Records</th>
                   <th className="py-3 border-0">Status</th>
                   <th className="py-3 text-end pe-4 border-0">Action</th>
                 </tr>
@@ -526,10 +646,7 @@ const Reports = () => {
                         <div className="d-flex align-items-center justify-content-center rounded-3"
                           style={{
                             width: 36, height: 36, flexShrink: 0,
-                            background: r.type === 'Monthly' ? 'linear-gradient(135deg, #dbeafe, #bfdbfe)'
-                              : r.type === 'Quarterly' ? 'linear-gradient(135deg, #dcfce7, #bbf7d0)'
-                              : 'linear-gradient(135deg, #fef3c7, #fde68a)',
-                            color: r.type === 'Monthly' ? '#1d4ed8' : r.type === 'Quarterly' ? '#15803d' : '#b45309',
+                            background: 'linear-gradient(135deg, #dbeafe, #bfdbfe)', color: '#1d4ed8',
                           }}>
                           <FileText size={16} />
                         </div>
@@ -537,16 +654,12 @@ const Reports = () => {
                       </div>
                     </td>
                     <td className="py-3">
-                      <Badge pill style={{
-                        fontWeight: 600, fontSize: 11, padding: '4px 10px',
-                        background: r.type === 'Monthly' ? '#eff6ff' : r.type === 'Quarterly' ? '#f0fdf4' : '#fffbeb',
-                        color: r.type === 'Monthly' ? '#1d4ed8' : r.type === 'Quarterly' ? '#15803d' : '#b45309',
-                      }}>
+                      <Badge pill style={{ fontWeight: 600, fontSize: 11, padding: '4px 10px', background: '#eff6ff', color: '#1d4ed8' }}>
                         {r.type}
                       </Badge>
                     </td>
                     <td className="py-3" style={{ color: '#6b7280', fontSize: 12 }}>{r.date}</td>
-                    <td className="py-3" style={{ color: '#6b7280', fontSize: 12 }}>{r.size}</td>
+                    <td className="py-3" style={{ color: '#374151', fontSize: 12, fontWeight: 600 }}>{r.records}</td>
                     <td className="py-3">
                       <span className="d-flex align-items-center gap-1" style={{ fontSize: 12, color: '#16a34a', fontWeight: 500 }}>
                         <CheckCircle2 size={13} /> {r.status}
@@ -555,7 +668,7 @@ const Reports = () => {
                     <td className="py-3 text-end pe-4">
                       <Button size="sm" variant="light" className="border-0 d-inline-flex align-items-center gap-1 rounded-3"
                         style={{ background: '#f0fdf4', padding: '6px 12px' }}
-                        onClick={() => downloadCSV(`${r.name}.csv`, ['Report', 'Type', 'Date'], [[r.name, r.type, r.date]])}>
+                        onClick={() => downloadCSV(`${r.name}.csv`, ['Report', 'Type', 'Date', 'Records'], [[r.name, r.type, r.date, r.records]])}>
                         <Download size={13} color="#16a34a" />
                         <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>Download</span>
                       </Button>
@@ -568,12 +681,10 @@ const Reports = () => {
         </Card.Body>
       </Card>
 
-      {/* ── Generate Preview Modal ── */}
+      {/* ── Preview Modal ── */}
       <Modal show={showPreview} onHide={() => setShowPreview(false)} centered size="lg">
         <Modal.Header closeButton style={{ border: 'none', paddingBottom: 0 }}>
-          <Modal.Title style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>
-            Report Preview
-          </Modal.Title>
+          <Modal.Title style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>Report Preview</Modal.Title>
         </Modal.Header>
         <Modal.Body className="p-4">
           <div className="p-3 rounded-3 mb-3" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
@@ -597,14 +708,13 @@ const Reports = () => {
             ))}
           </Row>
           <div style={{ fontSize: 12, color: '#6b7280' }}>
-            Use the Export button to download this report as CSV or JSON.
+            Data sourced from {appointments.length} appointments and {vaccinations.length} vaccinations in the selected period.
           </div>
         </Modal.Body>
         <Modal.Footer style={{ border: 'none' }}>
           <Button variant="light" size="sm" onClick={() => setShowPreview(false)} className="rounded-3">Close</Button>
           <Button size="sm" onClick={() => { handleExportSummary(); setShowPreview(false); }}
-            className="rounded-3 d-flex align-items-center gap-1"
-            style={{ background: '#16a34a', border: 'none' }}>
+            className="rounded-3 d-flex align-items-center gap-1" style={{ background: '#16a34a', border: 'none' }}>
             <Download size={14} /> Download CSV
           </Button>
           <Button size="sm" onClick={handlePrint} variant="outline-secondary" className="rounded-3 d-flex align-items-center gap-1">
