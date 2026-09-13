@@ -254,96 +254,190 @@ p {
   .py-4 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
 }
 
-/* ===== React DatePicker Custom Styles ===== */
+/* ===== Report Date Card ===== */
+.bh-report-date-card {
+  position: relative;
+  overflow: hidden;
+}
+.bh-report-date-card::before {
+  content: '';
+  position: absolute;
+  top: -30px;
+  right: -30px;
+  width: 120px;
+  height: 120px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 50%;
+  pointer-events: none;
+}
+.bh-report-date-card::after {
+  content: '';
+  position: absolute;
+  bottom: -40px;
+  left: 30%;
+  width: 160px;
+  height: 160px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* ===== DatePicker Wrapper & Input ===== */
+.bh-dp-wrapper {
+  position: relative;
+}
+.bh-dp-wrapper .bh-dp-input {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  padding: 8px 14px !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 10px !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #fff !important;
+  width: 155px !important;
+  backdrop-filter: blur(4px);
+  transition: all 0.2s ease !important;
+}
+.bh-dp-wrapper .bh-dp-input::placeholder {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+.bh-dp-wrapper .bh-dp-input:focus {
+  border-color: rgba(255, 255, 255, 0.6) !important;
+  outline: none !important;
+  background: rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ===== React DatePicker Popup ===== */
 .react-datepicker-wrapper {
   display: inline-block;
 }
-
-.react-datepicker__input-container input {
-  font-size: 12px !important;
-  padding: 0.375rem 0.75rem !important;
-  border: 1px solid #d1d5db !important;
-  border-radius: 0.375rem !important;
-  width: 130px !important;
+.react-datepicker-popper {
+  z-index: 1060 !important;
 }
-
-.react-datepicker__input-container input:focus {
-  border-color: #16a34a !important;
-  outline: none !important;
-  box-shadow: 0 0 0 0.2rem rgba(22, 163, 74, 0.15) !important;
-}
-
 .react-datepicker {
   font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
-  border: 1px solid #e5e7eb !important;
-  border-radius: 0.5rem !important;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important;
+  border: none !important;
+  border-radius: 14px !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(0,0,0,0.05) !important;
+  overflow: hidden !important;
+}
+.react-datepicker__triangle {
+  display: none !important;
 }
 
 .react-datepicker__header {
-  background-color: #16a34a !important;
+  background: linear-gradient(135deg, #064e3b, #047857) !important;
   border-bottom: none !important;
-  border-radius: 0.5rem 0.5rem 0 0 !important;
-  padding-top: 0.75rem !important;
+  border-radius: 0 !important;
+  padding: 14px 14px 10px !important;
 }
-
-.react-datepicker__current-month,
-.react-datepicker__day-name {
+.react-datepicker__current-month {
   color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 14px !important;
+  margin-bottom: 8px !important;
+}
+.react-datepicker__day-name {
+  color: rgba(255, 255, 255, 0.7) !important;
   font-weight: 600 !important;
+  font-size: 11px !important;
+  text-transform: uppercase !important;
+  width: 2.2rem !important;
+  margin: 0 2px !important;
+}
+.react-datepicker__navigation {
+  top: 14px !important;
+}
+.react-datepicker__navigation-icon::before {
+  border-color: rgba(255, 255, 255, 0.7) !important;
+  border-width: 2px 2px 0 0 !important;
+}
+.react-datepicker__navigation:hover *::before {
+  border-color: #fff !important;
 }
 
+.react-datepicker__month {
+  margin: 8px !important;
+}
 .react-datepicker__day {
   color: #374151 !important;
-  border-radius: 0.375rem !important;
-  transition: all 0.2s ease !important;
+  border-radius: 8px !important;
+  transition: all 0.15s ease !important;
+  width: 2.2rem !important;
+  line-height: 2.2rem !important;
+  margin: 2px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
 }
-
 .react-datepicker__day:hover {
   background-color: #dcfce7 !important;
   color: #166534 !important;
 }
-
+.react-datepicker__day--today {
+  font-weight: 700 !important;
+  background: #f0fdf4 !important;
+  color: #16a34a !important;
+}
 .react-datepicker__day--selected,
 .react-datepicker__day--in-range,
 .react-datepicker__day--in-selecting-range {
-  background-color: #16a34a !important;
+  background: linear-gradient(135deg, #16a34a, #15803d) !important;
   color: #ffffff !important;
   font-weight: 600 !important;
+  box-shadow: 0 2px 6px rgba(22, 163, 74, 0.3) !important;
 }
-
 .react-datepicker__day--keyboard-selected {
   background-color: #bbf7d0 !important;
   color: #166534 !important;
 }
-
 .react-datepicker__day--disabled {
   color: #d1d5db !important;
 }
+.react-datepicker__day--outside-month {
+  color: #d1d5db !important;
+}
 
+/* Month/year picker */
 .react-datepicker__month-text,
 .react-datepicker__quarter-text,
 .react-datepicker__year-text {
-  border-radius: 0.375rem !important;
-  transition: all 0.2s ease !important;
+  border-radius: 8px !important;
+  transition: all 0.15s ease !important;
+  padding: 8px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
 }
-
 .react-datepicker__month-text:hover,
 .react-datepicker__quarter-text:hover,
 .react-datepicker__year-text:hover {
   background-color: #dcfce7 !important;
   color: #166534 !important;
 }
-
 .react-datepicker__month-text--selected,
+.react-datepicker__month-text--in-range,
 .react-datepicker__quarter-text--selected,
 .react-datepicker__year-text--selected {
-  background-color: #16a34a !important;
+  background: linear-gradient(135deg, #16a34a, #15803d) !important;
   color: #ffffff !important;
   font-weight: 600 !important;
+  box-shadow: 0 2px 6px rgba(22, 163, 74, 0.3) !important;
+}
+.react-datepicker__month-text--keyboard-selected {
+  background-color: #bbf7d0 !important;
+  color: #166534 !important;
 }
 
 .react-datepicker__week-number {
-  color: #6b7280 !important;
-  font-weight: 500 !important;
+  color: #9ca3af !important;
+  font-weight: 600 !important;
+  font-size: 10px !important;
+}
+
+/* ===== Print Styles ===== */
+@media print {
+  .bh-report-date-card,
+  .bh-sidebar,
+  .bh-sidebar-overlay { display: none !important; }
+  .bh-card-hover { break-inside: avoid; }
 }
