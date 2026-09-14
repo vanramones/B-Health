@@ -131,6 +131,15 @@ const Appointments = () => {
         note: rescheduleForm.note,
       });
       await refresh();
+      // Show toast banner
+      setToastData({
+        name: showReschedule.name,
+        service: showReschedule.service,
+        date: rescheduleForm.date,
+        time: rescheduleForm.time,
+        type: 'reschedule',
+      });
+      setShowToast(true);
       setRescheduleSuccess('Appointment rescheduled! User has been notified.');
       setRescheduleSubmitting(false);
       // Close after short delay so user sees success message
@@ -710,35 +719,59 @@ const Appointments = () => {
         </Form>
       </Modal>
 
-      {/* Toast Notification for New Appointments */}
+      {/* Toast Notification for New Appointments & Reschedule */}
       <ToastContainer position="top-end" className="p-3" style={{ zIndex: 9999 }}>
         <Toast show={showToast} onClose={() => setShowToast(false)} delay={5000} autohide
           style={{ 
             boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-            border: '2px solid #16a34a',
+            border: `2px solid ${toastData?.type === 'reschedule' ? '#f59e0b' : '#16a34a'}`,
           }}>
-          <Toast.Header closeButton style={{ backgroundColor: '#dcfce7', borderBottom: '1px solid #86efac' }}>
+          <Toast.Header closeButton style={{
+            backgroundColor: toastData?.type === 'reschedule' ? '#fef3c7' : '#dcfce7',
+            borderBottom: `1px solid ${toastData?.type === 'reschedule' ? '#fcd34d' : '#86efac'}`
+          }}>
             <div className="d-flex align-items-center gap-2">
               <div className="d-flex align-items-center justify-content-center rounded-circle"
-                style={{ width: 28, height: 28, backgroundColor: '#16a34a' }}>
-                <Bell size={14} color="#fff" />
+                style={{ width: 28, height: 28, backgroundColor: toastData?.type === 'reschedule' ? '#f59e0b' : '#16a34a' }}>
+                {toastData?.type === 'reschedule' ? <CalendarClock size={14} color="#fff" /> : <Bell size={14} color="#fff" />}
               </div>
-              <strong className="me-auto" style={{ color: '#166534', fontSize: 14 }}>
-                New Appointment Received
+              <strong className="me-auto" style={{
+                color: toastData?.type === 'reschedule' ? '#92400e' : '#166534',
+                fontSize: 14
+              }}>
+                {toastData?.type === 'reschedule' ? 'Appointment Rescheduled' : 'New Appointment Received'}
               </strong>
             </div>
           </Toast.Header>
           <Toast.Body style={{ fontSize: 13 }}>
             {toastData && (
               <div>
-                <div className="mb-2">
-                  <strong style={{ color: '#111827' }}>{toastData.name}</strong> has booked an appointment
-                </div>
-                <div className="text-muted" style={{ fontSize: 12 }}>
-                  <div><strong>Service:</strong> {toastData.service}</div>
-                  <div><strong>Date:</strong> {toastData.date}</div>
-                  <div><strong>Time:</strong> {toastData.time}</div>
-                </div>
+                {toastData.type === 'reschedule' ? (
+                  <>
+                    <div className="mb-2">
+                      <strong style={{ color: '#111827' }}>{toastData.name}</strong>'s appointment has been rescheduled
+                    </div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>
+                      <div><strong>Service:</strong> {toastData.service}</div>
+                      <div><strong>New Date:</strong> {toastData.date}</div>
+                      <div><strong>New Time:</strong> {toastData.time}</div>
+                      <div className="mt-1 d-flex align-items-center gap-1" style={{ color: '#16a34a', fontWeight: 600 }}>
+                        <Bell size={11} /> User has been notified
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mb-2">
+                      <strong style={{ color: '#111827' }}>{toastData.name}</strong> has booked an appointment
+                    </div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>
+                      <div><strong>Service:</strong> {toastData.service}</div>
+                      <div><strong>Date:</strong> {toastData.date}</div>
+                      <div><strong>Time:</strong> {toastData.time}</div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </Toast.Body>
