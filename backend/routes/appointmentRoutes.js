@@ -159,4 +159,83 @@ router.patch('/:id/status', auth, async (req, res) => {
 router.put('/:id',    auth, crud.update);
 router.delete('/:id', auth, crud.remove);
 
+// PATCH /:id/reschedule — admin reschedules appointment, auto-notifies user
+router.patch('/:id/reschedule', auth, async (req, res) => {
+  try {
+    const { date, time, note } = req.body;
+    if (!date || !time) return res.status(400).json({ error: 'date and time are required.' });
+    const adminName = req.user?.username || req.user?.name || 'Admin';
+
+    // Fetch current appointment details
+    const { data: rows, error: fetchError } = await db
+      .from('appointments')
+      .select('user_id, name, service, date, time, notes, status')
+      .eq('id', req.params.id)
+      .limit(1);
+    if (fetchError) throw fetchError;
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Appointment not found.' });
+
+    const apt = rows[0];
+    const oldDate = apt.date;
+    const oldTime = apt.time;
+
+    // Build reschedule note
+    const rescheduleNote = note
+      ? `[RESCHEDULED by ${adminName}] ${note}`
+      : `[RESCHEDULED by ${adminName}] Appointment moved from ${oldDate} ${oldTime} to ${date} ${time}.`;
+
+    // Combine with existing notes
+    const combinedNotes = apt.notes
+      ? `${apt.notes}\n\n${rescheduleNote}`
+      : rescheduleNote;
+
+    // Update appointment with new date/time, notes, and set status back to pending
+    const { error: updateError } = await db
+      .from('appointments')
+      .update({
+        date,
+        time,
+        notes: combinedNotes,
+        status: 'pending',
+        handled_by: adminName,
+      })
+      .eq('id', req.params.id);
+    if (updateError) throw updateError;
+
+    // Create notification for the user
+    const notificationTitle = 'Appointment Rescheduled';
+    const notificationMessage = note
+      ? `Your appointment for ${apt.service} has been rescheduled to ${date} at ${time}. Note: ${note}`
+      : `Your appointment for ${apt.service} has been rescheduled to ${date} at ${time}.`;
+
+    await db.from('notifications').insert({
+      type: 'Appointment',
+      title: notificationTitle,
+      message: notificationMessage,
+      recipient: apt.name,
+      priority: 'high',
+    });
+
+    // Emit real-time update via socket
+    if (global.io) {
+      global.io.emit('appointment-rescheduled', {
+        appointmentId: req.params.id,
+        userId: apt.user_id,
+        patientName: apt.name,
+        service: apt.service,
+        oldDate,
+        oldTime,
+        newDate: date,
+        newTime: time,
+        note,
+        message: notificationTitle,
+      });
+    }
+
+    res.json({ ok: true, message: 'Appointment rescheduled and user notified.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

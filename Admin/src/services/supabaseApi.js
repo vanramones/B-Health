@@ -350,6 +350,64 @@ async function route(method, rawPath, body = {}) {
     throwIf(error);
     return (data || []).map((r) => ({ id: r.id, patient_name: r.name, service: r.service, appointment_date: r.date, time: r.time, status: r.status }));
   }
+  if (seg[0] === 'appointments' && seg[2] === 'reschedule' && method === 'PATCH') {
+    const { date, time, note } = body;
+    if (!date || !time) throw fail('date and time are required.', 400);
+    const admin = getAdmin();
+    const handledBy = (admin && (admin.username || admin.name)) || 'Admin';
+
+    // Fetch current appointment
+    const { data: appt, error: fetchErr } = await supabase.from('appointments')
+      .select('user_id, name, service, date, time, notes, status').eq('id', seg[1]).limit(1).single();
+    if (fetchErr) throw fail(fetchErr.message);
+
+    const oldDate = appt.date;
+    const oldTime = appt.time;
+
+    // Build reschedule note
+    const rescheduleNote = note
+      ? `[RESCHEDULED by ${handledBy}] ${note}`
+      : `[RESCHEDULED by ${handledBy}] Appointment moved from ${oldDate} ${oldTime} to ${date} ${time}.`;
+    const combinedNotes = appt.notes ? `${appt.notes}\n\n${rescheduleNote}` : rescheduleNote;
+
+    // Update appointment
+    const { error: updateErr } = await supabase.from('appointments')
+      .update({ date, time, notes: combinedNotes, status: 'pending', handled_by: handledBy })
+      .eq('id', seg[1]);
+    if (updateErr) throw fail(updateErr.message);
+
+    // Create notification for the user
+    const notifTitle = 'Appointment Rescheduled';
+    const notifMsg = note
+      ? `Your appointment for ${appt.service} has been rescheduled to ${date} at ${time}. Note: ${note}`
+      : `Your appointment for ${appt.service} has been rescheduled to ${date} at ${time}.`;
+    await supabase.from('notifications').insert({
+      type: 'Appointment',
+      title: notifTitle,
+      message: notifMsg,
+      recipient: appt.name,
+      priority: 'high',
+    });
+
+    // Send FCM push notification
+    let targetUserId = appt.user_id || null;
+    if (!targetUserId && appt.name) {
+      const { data: users } = await supabase.from('users').select('id').eq('full_name', appt.name).limit(1);
+      if (users && users.length) targetUserId = users[0].id;
+    }
+    if (targetUserId) {
+      supabase.functions.invoke('send-push', {
+        body: {
+          user_id: targetUserId,
+          title: '📅 Appointment Rescheduled',
+          body: `Your ${appt.service || 'appointment'} has been moved to ${date} at ${time}.${note ? ` Note: ${note}` : ''} Tap to view details.`,
+          route: '/user/appointments',
+        },
+      }).catch((e) => console.warn('[push] reschedule send-push failed:', e?.message || e));
+    }
+
+    return { ok: true, message: 'Appointment rescheduled and user notified.' };
+  }
   if (seg[0] === 'appointments' && seg[2] === 'status' && method === 'PATCH') {
     if (!body.status) throw fail('status is required.', 400);
     const admin = getAdmin();

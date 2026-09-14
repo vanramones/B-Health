@@ -4,7 +4,7 @@ import api from '../../utils/api';
 import { socket } from '../../config/socket';
 import { supabase } from '../../config/supabase';
 import { Card, Row, Col, Form, InputGroup, Button, Table, Modal, Toast, ToastContainer } from 'react-bootstrap';
-import { Search, Plus, Check, X, Calendar, Clock, User, Bell, List, CalendarDays, ChevronLeft, ChevronRight, Activity, FileText, ClipboardList } from 'lucide-react';
+import { Search, Plus, Check, X, Calendar, Clock, User, Bell, List, CalendarDays, ChevronLeft, ChevronRight, Activity, FileText, ClipboardList, CalendarClock, AlertCircle } from 'lucide-react';
 
 const statusVariant = {
   pending:   { bg: '#fecaca', color: '#7f1d1d', border: '#ef4444', label: 'Pending'   },
@@ -41,6 +41,11 @@ const Appointments = () => {
   const [toastData, setToastData] = useState(null);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'calendar'
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [showReschedule, setShowReschedule] = useState(null);
+  const [rescheduleForm, setRescheduleForm] = useState({ date: '', time: '', note: '' });
+  const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState('');
+  const [rescheduleSuccess, setRescheduleSuccess] = useState('');
 
   // ── Socket.io — bagong appointment mula sa user ──
   useEffect(() => {
@@ -101,6 +106,43 @@ const Appointments = () => {
       await api.patch(`/appointments/${id}/status`, { status });
       await refresh();
     } catch { await updateItem(id, { status }); }
+  };
+
+  const openReschedule = (apt) => {
+    setShowReschedule(apt);
+    setRescheduleForm({ date: apt.date || '', time: apt.time || '', note: '' });
+    setRescheduleError('');
+    setRescheduleSuccess('');
+  };
+
+  const handleReschedule = async (e) => {
+    e.preventDefault();
+    if (!showReschedule) return;
+    if (!rescheduleForm.date || !rescheduleForm.time) {
+      setRescheduleError('New date and time are required.');
+      return;
+    }
+    setRescheduleSubmitting(true);
+    setRescheduleError('');
+    try {
+      await api.patch(`/appointments/${showReschedule.id}/reschedule`, {
+        date: rescheduleForm.date,
+        time: rescheduleForm.time,
+        note: rescheduleForm.note,
+      });
+      await refresh();
+      setRescheduleSuccess('Appointment rescheduled! User has been notified.');
+      setRescheduleSubmitting(false);
+      // Close after short delay so user sees success message
+      setTimeout(() => {
+        setShowReschedule(null);
+        setShowView(null);
+        setRescheduleSuccess('');
+      }, 1500);
+    } catch (err) {
+      setRescheduleError(err.message || 'Failed to reschedule appointment.');
+      setRescheduleSubmitting(false);
+    }
   };
 
   const handleAdd = async (e) => {
@@ -369,10 +411,12 @@ const Appointments = () => {
                         {a.status === 'pending' && (<>
                           <Button size="sm" variant="light" className="border-0 p-1 px-2" onClick={() => updateStatus(a.id, 'approved')} title="Approve"><Check size={14} color="#16a34a" /></Button>
                           <Button size="sm" variant="light" className="border-0 p-1 px-2" onClick={() => updateStatus(a.id, 'rejected')} title="Reject"><X size={14} color="#dc2626" /></Button>
+                          <Button size="sm" variant="light" className="border-0 p-1 px-2" onClick={() => openReschedule(a)} title="Reschedule"><CalendarClock size={14} color="#f59e0b" /></Button>
                         </>)}
                         {a.status === 'approved' && (<>
                           <Button size="sm" variant="light" className="border-0 p-1 px-2" onClick={() => updateStatus(a.id, 'completed')} title="Mark Completed"><Check size={14} color="#1d4ed8" /></Button>
                           <Button size="sm" variant="light" className="border-0 p-1 px-2" onClick={() => updateStatus(a.id, 'rejected')} title="Reject"><X size={14} color="#dc2626" /></Button>
+                          <Button size="sm" variant="light" className="border-0 p-1 px-2" onClick={() => openReschedule(a)} title="Reschedule"><CalendarClock size={14} color="#f59e0b" /></Button>
                         </>)}
                       </div>
                     </td>
@@ -544,10 +588,13 @@ const Appointments = () => {
             </div>
           </Modal.Body>
           <Modal.Footer className="justify-content-between p-4" style={{ backgroundColor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
-            <div className="d-flex gap-2">
+            <div className="d-flex gap-2 flex-wrap">
               {showView.status === 'pending' && (<>
                 <Button size="md" className="border-0 d-flex align-items-center gap-2" style={{ backgroundColor: '#16a34a', fontWeight: 600 }} onClick={() => { updateStatus(showView.id, 'approved'); setShowView(null); }}>
                   <Check size={18} /> Approve
+                </Button>
+                <Button size="md" className="border-0 d-flex align-items-center gap-2" style={{ backgroundColor: '#f59e0b', fontWeight: 600 }} onClick={() => { setShowView(null); openReschedule(showView); }}>
+                  <CalendarClock size={18} /> Reschedule
                 </Button>
                 <Button size="md" variant="danger" className="d-flex align-items-center gap-2" onClick={() => { updateStatus(showView.id, 'rejected'); setShowView(null); }}>
                   <X size={18} /> Reject
@@ -557,6 +604,9 @@ const Appointments = () => {
                 <Button size="md" className="border-0 d-flex align-items-center gap-2" style={{ backgroundColor: '#1d4ed8', fontWeight: 600 }} onClick={() => { updateStatus(showView.id, 'completed'); setShowView(null); }}>
                   <Check size={18} /> Mark Completed
                 </Button>
+                <Button size="md" className="border-0 d-flex align-items-center gap-2" style={{ backgroundColor: '#f59e0b', fontWeight: 600 }} onClick={() => { setShowView(null); openReschedule(showView); }}>
+                  <CalendarClock size={18} /> Reschedule
+                </Button>
                 <Button size="md" variant="danger" className="d-flex align-items-center gap-2" onClick={() => { updateStatus(showView.id, 'rejected'); setShowView(null); }}>
                   <X size={18} /> Reject
                 </Button>
@@ -565,6 +615,99 @@ const Appointments = () => {
             <Button size="md" variant="secondary" onClick={() => setShowView(null)}>Close</Button>
           </Modal.Footer>
         </>)}
+      </Modal>
+
+      {/* Reschedule Modal */}
+      <Modal show={!!showReschedule} onHide={() => setShowReschedule(null)} centered>
+        <Modal.Header closeButton style={{ borderBottom: '1px solid #f1f5f9' }}>
+          <div className="d-flex align-items-center gap-2">
+            <div className="d-flex align-items-center justify-content-center rounded-3"
+              style={{ width: 36, height: 36, backgroundColor: '#fef3c7' }}>
+              <CalendarClock size={18} color="#f59e0b" />
+            </div>
+            <div>
+              <Modal.Title style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Reschedule Appointment</Modal.Title>
+              {showReschedule && (
+                <div style={{ fontSize: 12, color: '#94a3b8' }}>
+                  {showReschedule.name} — {showReschedule.service}
+                </div>
+              )}
+            </div>
+          </div>
+        </Modal.Header>
+        <Form onSubmit={handleReschedule}>
+          <Modal.Body className="p-4">
+            {rescheduleError && (
+              <div className="d-flex align-items-center gap-2 p-3 mb-3 rounded-3"
+                style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', fontSize: 13, color: '#dc2626' }}>
+                <AlertCircle size={16} /> {rescheduleError}
+              </div>
+            )}
+            {rescheduleSuccess && (
+              <div className="d-flex align-items-center gap-2 p-3 mb-3 rounded-3"
+                style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', fontSize: 13, color: '#16a34a' }}>
+                <Check size={16} /> {rescheduleSuccess}
+              </div>
+            )}
+
+            {/* Current schedule info */}
+            {showReschedule && (
+              <div className="d-flex align-items-center gap-3 p-3 mb-3 rounded-3"
+                style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                <div className="d-flex align-items-center gap-2">
+                  <Calendar size={15} color="#94a3b8" />
+                  <div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Current Date</div>
+                    <div className="fw-semibold" style={{ fontSize: 13, color: '#475569' }}>{showReschedule.date}</div>
+                  </div>
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                  <Clock size={15} color="#94a3b8" />
+                  <div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Current Time</div>
+                    <div className="fw-semibold" style={{ fontSize: 13, color: '#475569' }}>{showReschedule.time}</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Row className="g-2 mb-3">
+              <Col xs={7}>
+                <Form.Label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>New Date</Form.Label>
+                <Form.Control type="date" size="sm" value={rescheduleForm.date}
+                  onChange={(e) => setRescheduleForm({ ...rescheduleForm, date: e.target.value })} required />
+              </Col>
+              <Col xs={5}>
+                <Form.Label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>New Time</Form.Label>
+                <Form.Control type="time" size="sm" value={rescheduleForm.time}
+                  onChange={(e) => setRescheduleForm({ ...rescheduleForm, time: e.target.value })} required />
+              </Col>
+            </Row>
+
+            <Form.Group className="mb-2">
+              <Form.Label style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>
+                Note to User <span style={{ fontWeight: 400, color: '#94a3b8' }}>(optional — will be sent in notification)</span>
+              </Form.Label>
+              <Form.Control as="textarea" rows={3} size="sm" placeholder="e.g. The health center is closed on your scheduled date. Please come on the new date."
+                value={rescheduleForm.note}
+                onChange={(e) => setRescheduleForm({ ...rescheduleForm, note: e.target.value })} />
+            </Form.Group>
+
+            <div className="d-flex align-items-center gap-2 mt-2 p-2 rounded-2"
+              style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', fontSize: 11, color: '#1d4ed8' }}>
+              <Bell size={13} />
+              <span>The user will automatically receive a notification about this reschedule.</span>
+            </div>
+          </Modal.Body>
+          <Modal.Footer style={{ borderTop: '1px solid #f1f5f9' }}>
+            <Button variant="light" size="sm" onClick={() => setShowReschedule(null)}>Cancel</Button>
+            <Button type="submit" size="sm" className="border-0 d-flex align-items-center gap-1"
+              disabled={rescheduleSubmitting}
+              style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', fontWeight: 600 }}>
+              <CalendarClock size={15} /> {rescheduleSubmitting ? 'Rescheduling...' : 'Confirm Reschedule'}
+            </Button>
+          </Modal.Footer>
+        </Form>
       </Modal>
 
       {/* Toast Notification for New Appointments */}
