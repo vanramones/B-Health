@@ -26,6 +26,7 @@ export const userApi = {
   get:    (path) => userRequest(path),
   post:   (path, body) => userRequest(path, { method: 'POST',   body: JSON.stringify(body) }),
   put:    (path, body) => userRequest(path, { method: 'PUT',    body: JSON.stringify(body) }),
+  patch:  (path, body) => userRequest(path, { method: 'PATCH',  body: body ? JSON.stringify(body) : undefined }),
   delete: (path)       => userRequest(path, { method: 'DELETE' }),
 };
 

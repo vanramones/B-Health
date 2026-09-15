@@ -4,7 +4,7 @@ import api from '../../utils/api';
 import { socket } from '../../config/socket';
 import { supabase } from '../../config/supabase';
 import { Card, Row, Col, Form, InputGroup, Button, Table, Modal, Toast, ToastContainer } from 'react-bootstrap';
-import { Search, Plus, Check, X, Calendar, Clock, User, Bell, List, CalendarDays, ChevronLeft, ChevronRight, Activity, FileText, ClipboardList, CalendarClock, AlertCircle } from 'lucide-react';
+import { Search, Plus, Check, X, Calendar, Clock, User, Bell, List, CalendarDays, ChevronLeft, ChevronRight, Activity, FileText, ClipboardList, CalendarClock, AlertCircle, CheckCircle2, MessageSquare } from 'lucide-react';
 
 const statusVariant = {
   pending:   { bg: '#fecaca', color: '#7f1d1d', border: '#ef4444', label: 'Pending'   },
@@ -63,8 +63,34 @@ const Appointments = () => {
       } catch (e) {}
     };
 
+    const handleRescheduleAccepted = (data) => {
+      refresh();
+      setToastData({
+        ...data,
+        _type: 'reschedule-accepted',
+        name: data.patientName,
+      });
+      setShowToast(true);
+    };
+
+    const handleUserNoteSent = (data) => {
+      refresh();
+      setToastData({
+        ...data,
+        _type: 'user-note',
+        name: data.patientName,
+      });
+      setShowToast(true);
+    };
+
     socket.on('appointment-created', handleNewAppointment);
-    return () => socket.off('appointment-created', handleNewAppointment);
+    socket.on('reschedule-accepted', handleRescheduleAccepted);
+    socket.on('user-note-sent', handleUserNoteSent);
+    return () => {
+      socket.off('appointment-created', handleNewAppointment);
+      socket.off('reschedule-accepted', handleRescheduleAccepted);
+      socket.off('user-note-sent', handleUserNoteSent);
+    };
   }, [refresh]);
 
   // ── Supabase Realtime ──
@@ -555,8 +581,31 @@ const Appointments = () => {
                     <ClipboardList size={18} color="#f59e0b" /> Notes
                   </div>
                   {showView.notes ? (
-                    <div className="p-3 rounded-3" style={{ backgroundColor: '#fef3c7', border: '1px solid #fcd34d', color: '#92400e', fontSize: 14, minHeight: 120 }}>
-                      {showView.notes}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 120 }}>
+                      {showView.notes.split('\n\n').map((block, i) => {
+                        const isUserNote = block.includes('[NOTE from');
+                        const isRescheduleNote = block.includes('[RESCHEDULED');
+                        return (
+                          <div key={i} className="p-3 rounded-3" style={{
+                            backgroundColor: isUserNote ? '#dbeafe' : isRescheduleNote ? '#fef3c7' : '#f8fafc',
+                            border: `1px solid ${isUserNote ? '#93c5fd' : isRescheduleNote ? '#fcd34d' : '#e2e8f0'}`,
+                            color: isUserNote ? '#1e40af' : isRescheduleNote ? '#92400e' : '#374151',
+                            fontSize: 13,
+                          }}>
+                            {isUserNote && (
+                              <div className="d-flex align-items-center gap-1 mb-1" style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#3b82f6' }}>
+                                <MessageSquare size={10} /> User Note
+                              </div>
+                            )}
+                            {isRescheduleNote && (
+                              <div className="d-flex align-items-center gap-1 mb-1" style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#d97706' }}>
+                                <CalendarClock size={10} /> Reschedule Note
+                              </div>
+                            )}
+                            {block}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="p-3 rounded-3" style={{ backgroundColor: '#f8fafc', color: '#9ca3af', fontSize: 14, minHeight: 120, fontStyle: 'italic' }}>
@@ -724,29 +773,85 @@ const Appointments = () => {
         <Toast show={showToast} onClose={() => setShowToast(false)} delay={5000} autohide
           style={{ 
             boxShadow: '0 10px 25px rgba(0,0,0,0.15)',
-            border: `2px solid ${toastData?.type === 'reschedule' ? '#f59e0b' : '#16a34a'}`,
+            border: `2px solid ${
+              toastData?._type === 'reschedule-accepted' ? '#16a34a'
+              : toastData?._type === 'user-note' ? '#3b82f6'
+              : toastData?.type === 'reschedule' ? '#f59e0b'
+              : '#16a34a'
+            }`,
           }}>
           <Toast.Header closeButton style={{
-            backgroundColor: toastData?.type === 'reschedule' ? '#fef3c7' : '#dcfce7',
-            borderBottom: `1px solid ${toastData?.type === 'reschedule' ? '#fcd34d' : '#86efac'}`
+            backgroundColor:
+              toastData?._type === 'reschedule-accepted' ? '#dcfce7'
+              : toastData?._type === 'user-note' ? '#dbeafe'
+              : toastData?.type === 'reschedule' ? '#fef3c7'
+              : '#dcfce7',
+            borderBottom: `1px solid ${
+              toastData?._type === 'reschedule-accepted' ? '#86efac'
+              : toastData?._type === 'user-note' ? '#93c5fd'
+              : toastData?.type === 'reschedule' ? '#fcd34d'
+              : '#86efac'
+            }`
           }}>
             <div className="d-flex align-items-center gap-2">
               <div className="d-flex align-items-center justify-content-center rounded-circle"
-                style={{ width: 28, height: 28, backgroundColor: toastData?.type === 'reschedule' ? '#f59e0b' : '#16a34a' }}>
-                {toastData?.type === 'reschedule' ? <CalendarClock size={14} color="#fff" /> : <Bell size={14} color="#fff" />}
+                style={{ width: 28, height: 28, backgroundColor:
+                  toastData?._type === 'reschedule-accepted' ? '#16a34a'
+                  : toastData?._type === 'user-note' ? '#3b82f6'
+                  : toastData?.type === 'reschedule' ? '#f59e0b'
+                  : '#16a34a'
+                }}>
+                {toastData?._type === 'reschedule-accepted' ? <CheckCircle2 size={14} color="#fff" />
+                  : toastData?._type === 'user-note' ? <MessageSquare size={14} color="#fff" />
+                  : toastData?.type === 'reschedule' ? <CalendarClock size={14} color="#fff" />
+                  : <Bell size={14} color="#fff" />}
               </div>
               <strong className="me-auto" style={{
-                color: toastData?.type === 'reschedule' ? '#92400e' : '#166534',
+                color:
+                  toastData?._type === 'reschedule-accepted' ? '#166534'
+                  : toastData?._type === 'user-note' ? '#1e40af'
+                  : toastData?.type === 'reschedule' ? '#92400e'
+                  : '#166534',
                 fontSize: 14
               }}>
-                {toastData?.type === 'reschedule' ? 'Appointment Rescheduled' : 'New Appointment Received'}
+                {toastData?._type === 'reschedule-accepted' ? 'Reschedule Accepted'
+                  : toastData?._type === 'user-note' ? 'User Sent a Note'
+                  : toastData?.type === 'reschedule' ? 'Appointment Rescheduled'
+                  : 'New Appointment Received'}
               </strong>
             </div>
           </Toast.Header>
           <Toast.Body style={{ fontSize: 13 }}>
             {toastData && (
               <div>
-                {toastData.type === 'reschedule' ? (
+                {toastData._type === 'reschedule-accepted' ? (
+                  <>
+                    <div className="mb-2">
+                      <strong style={{ color: '#111827' }}>{toastData.name}</strong> accepted the rescheduled appointment
+                    </div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>
+                      <div><strong>Service:</strong> {toastData.service}</div>
+                      <div><strong>Date:</strong> {toastData.date}</div>
+                      <div><strong>Time:</strong> {toastData.time}</div>
+                      <div className="mt-1 d-flex align-items-center gap-1" style={{ color: '#16a34a', fontWeight: 600 }}>
+                        <CheckCircle2 size={11} /> Appointment confirmed by user
+                      </div>
+                    </div>
+                  </>
+                ) : toastData._type === 'user-note' ? (
+                  <>
+                    <div className="mb-2">
+                      <strong style={{ color: '#111827' }}>{toastData.name}</strong> sent a note about their appointment
+                    </div>
+                    <div className="text-muted" style={{ fontSize: 12 }}>
+                      <div><strong>Service:</strong> {toastData.service}</div>
+                      <div><strong>Date:</strong> {toastData.date}</div>
+                      <div className="mt-1 p-2 rounded-2" style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', color: '#374151', fontStyle: 'italic' }}>
+                        "{toastData.note}"
+                      </div>
+                    </div>
+                  </>
+                ) : toastData.type === 'reschedule' ? (
                   <>
                     <div className="mb-2">
                       <strong style={{ color: '#111827' }}>{toastData.name}</strong>'s appointment has been rescheduled

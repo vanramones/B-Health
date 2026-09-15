@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Row, Col, Button, Badge, Form, Modal, Nav, Toast, ToastContainer } from 'react-bootstrap';
 import {
   Calendar, Clock, User, Plus, CheckCircle, XCircle, AlertCircle, FileText, Eye,
+  CalendarClock, Send, MessageSquare,
 } from 'lucide-react';
 import { userApi, useUserAuth } from '../../context/UserAuthContext';
 import { socket } from '../../config/socket';
@@ -19,6 +20,8 @@ const statusConfig = {
   cancelled: { bg: '#fee2e2', color: '#991b1b', label: 'Cancelled', icon: <XCircle size={14} /> },
   rejected:  { bg: '#fee2e2', color: '#dc2626', label: 'Rejected',  icon: <XCircle size={14} /> },
 };
+
+const isRescheduled = (apt) => apt.notes && apt.notes.includes('[RESCHEDULED');
 
 const SLOT_LIMIT = 5;
 const emptyForm = { service: '', date: '', time: '', notes: '', phone: '' };
@@ -39,6 +42,11 @@ const UserAppointments = () => {
   const [slotLoading, setSlotLoading]   = useState(false);
   const [viewApt, setViewApt]           = useState(null);
   const [notification, setNotification] = useState(null);
+  const [accepting, setAccepting]       = useState(null);
+  const [showNoteModal, setShowNoteModal] = useState(null);
+  const [noteText, setNoteText]         = useState('');
+  const [sendingNote, setSendingNote]   = useState(false);
+  const [noteSuccess, setNoteSuccess]   = useState('');
 
   const fetchSlots = useCallback(async (date, service) => {
     if (!date || !service) { setSlotMap({}); return; }
@@ -85,16 +93,29 @@ const UserAppointments = () => {
       setTimeout(() => setNotification(null), 5000);
     };
 
+    const handleRescheduleUpdate = (data) => {
+      setNotification({
+        type: 'rescheduled',
+        message: `Your appointment has been rescheduled to ${data.date} at ${data.time}`,
+        patientName: data.patientName,
+        service: data.service,
+      });
+      fetchAppointments();
+      setTimeout(() => setNotification(null), 6000);
+    };
+
     socket.on('appointment-approved', handleAppointmentUpdate);
     socket.on('appointment-confirmed', handleAppointmentUpdate);
     socket.on('appointment-rejected', handleAppointmentUpdate);
     socket.on('appointment-completed', handleAppointmentUpdate);
+    socket.on('appointment-rescheduled', handleRescheduleUpdate);
 
     return () => {
       socket.off('appointment-approved');
       socket.off('appointment-confirmed');
       socket.off('appointment-rejected');
       socket.off('appointment-completed');
+      socket.off('appointment-rescheduled');
     };
   }, [fetchAppointments]);
 
@@ -156,6 +177,43 @@ const UserAppointments = () => {
     setCancelling(null);
   };
 
+  const handleAcceptReschedule = async (id) => {
+    setAccepting(id);
+    try {
+      await userApi.patch(`/user/appointments/${id}/accept-reschedule`);
+      setNotification({
+        type: 'approved',
+        message: 'Reschedule accepted!',
+        service: appointments.find(a => a.id === id)?.service || '',
+        patientName: 'You',
+      });
+      await fetchAppointments();
+      if (viewApt && viewApt.id === id) setViewApt(null);
+      setTimeout(() => setNotification(null), 4000);
+    } catch (err) {
+      setNotification({ type: 'rejected', message: err.message || 'Failed to accept reschedule', service: '', patientName: '' });
+      setTimeout(() => setNotification(null), 4000);
+    }
+    setAccepting(null);
+  };
+
+  const handleSendNote = async (e) => {
+    e.preventDefault();
+    if (!showNoteModal || !noteText.trim()) return;
+    setSendingNote(true);
+    try {
+      await userApi.post(`/user/appointments/${showNoteModal.id}/send-note`, { note: noteText.trim() });
+      setNoteSuccess('Note sent to admin successfully!');
+      setNoteText('');
+      await fetchAppointments();
+      setTimeout(() => { setShowNoteModal(null); setNoteSuccess(''); }, 2000);
+    } catch (err) {
+      setNoteSuccess('');
+      setNoteText('');
+    }
+    setSendingNote(false);
+  };
+
   const tabs = [
     { key: 'all',      label: 'All' },
     { key: 'upcoming', label: 'Upcoming' },
@@ -175,10 +233,11 @@ const UserAppointments = () => {
         }}>
           <Toast show={!!notification} onClose={() => setNotification(null)} delay={5000} autohide>
             <Toast.Header style={{
-              backgroundColor: notification.type === 'rejected' ? '#fee2e2' : notification.type === 'completed' ? '#dcfce7' : '#dbeafe',
-              borderBottom: `3px solid ${notification.type === 'rejected' ? '#dc2626' : notification.type === 'completed' ? '#22c55e' : '#1d4ed8'}`,
+              backgroundColor: notification.type === 'rejected' ? '#fee2e2' : notification.type === 'rescheduled' ? '#fffbeb' : notification.type === 'completed' ? '#dcfce7' : '#dbeafe',
+              borderBottom: `3px solid ${notification.type === 'rejected' ? '#dc2626' : notification.type === 'rescheduled' ? '#d97706' : notification.type === 'completed' ? '#22c55e' : '#1d4ed8'}`,
             }}>
-              <strong style={{ color: notification.type === 'rejected' ? '#dc2626' : notification.type === 'completed' ? '#22c55e' : '#1d4ed8' }}>
+              <strong style={{ color: notification.type === 'rejected' ? '#dc2626' : notification.type === 'rescheduled' ? '#d97706' : notification.type === 'completed' ? '#22c55e' : '#1d4ed8' }}>
+                {notification.type === 'rescheduled' && <CalendarClock size={14} className="me-1" />}
                 {notification.message}
               </strong>
             </Toast.Header>
@@ -280,21 +339,47 @@ const UserAppointments = () => {
                         <Clock size={14} color="#6b7280" />{apt.time}
                       </div>
                     </div>
-                    {apt.notes && (
+                    {/* Reschedule indicator */}
+                    {isRescheduled(apt) && apt.status === 'pending' && (
+                      <div className="p-2 rounded-3 mb-2 d-flex align-items-center gap-2"
+                        style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', fontSize: 12, color: '#92400e' }}>
+                        <CalendarClock size={14} />
+                        <span>This appointment was <strong>rescheduled</strong> by admin</span>
+                      </div>
+                    )}
+                    {apt.notes && !isRescheduled(apt) && (
                       <div className="p-2 rounded-2" style={{ backgroundColor: '#f9fafb', fontSize: 12, color: '#6b7280' }}>
                         {apt.notes}
                       </div>
                     )}
-                    {apt.status === 'pending' && (
-                      <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="mt-3 d-flex flex-column gap-2" onClick={(e) => e.stopPropagation()}>
+                      {/* Accept Reschedule button */}
+                      {isRescheduled(apt) && apt.status === 'pending' && (
+                        <Button size="sm" className="w-100 border-0 d-flex align-items-center justify-content-center gap-1"
+                          style={{ background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 600 }}
+                          disabled={accepting === apt.id}
+                          onClick={() => handleAcceptReschedule(apt.id)}>
+                          {accepting === apt.id ? 'Accepting...' : <><CheckCircle size={14} /> Accept Reschedule</>}
+                        </Button>
+                      )}
+                      {/* Send Note button */}
+                      {['pending', 'approved'].includes(apt.status) && (
+                        <Button size="sm" variant="outline-primary" className="w-100 d-flex align-items-center justify-content-center gap-1"
+                          style={{ fontSize: 12, fontWeight: 600 }}
+                          onClick={() => { setShowNoteModal(apt); setNoteText(''); setNoteSuccess(''); }}>
+                          <MessageSquare size={14} /> Send Note to Admin
+                        </Button>
+                      )}
+                      {/* Cancel button */}
+                      {apt.status === 'pending' && !isRescheduled(apt) && (
                         <Button size="sm" variant="light" className="w-100 border"
                           style={{ fontSize: 12, color: '#991b1b' }}
                           disabled={cancelling === apt.id}
                           onClick={() => handleCancel(apt.id)}>
                           {cancelling === apt.id ? 'Cancelling...' : 'Cancel Appointment'}
                         </Button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </Card.Body>
                 </Card>
               </Col>
@@ -364,6 +449,25 @@ const UserAppointments = () => {
                   </span>
                 </div>
 
+                {/* Reschedule notice */}
+                {isRescheduled(viewApt) && viewApt.status === 'pending' && (
+                  <div style={{
+                    padding: '12px 16px', borderRadius: 12, marginBottom: 12,
+                    background: '#fffbeb', border: '1px solid #fde68a',
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                  }}>
+                    <CalendarClock size={20} color="#d97706" style={{ flexShrink: 0, marginTop: 2 }} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>
+                        Appointment Rescheduled by Admin
+                      </div>
+                      <div style={{ fontSize: 12, color: '#78716c', lineHeight: 1.5 }}>
+                        The admin has rescheduled this appointment to a new date/time. Please review and accept the new schedule, or send a note if you're not available.
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Detail rows */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {[
@@ -384,7 +488,7 @@ const UserAppointments = () => {
                       label: 'Patient Name',
                       value: viewApt.name,
                     },
-                    viewApt.notes && {
+                    viewApt.notes && !isRescheduled(viewApt) && {
                       icon: <FileText size={18} color="#f59e0b" />,
                       label: 'Notes / Remarks',
                       value: viewApt.notes,
@@ -422,7 +526,28 @@ const UserAppointments = () => {
               </Modal.Body>
 
               <Modal.Footer style={{ padding: '12px 20px', gap: 8, flexWrap: 'wrap', borderTop: '1px solid #f3f4f6' }}>
-                {viewApt.status === 'pending' && (
+                {/* Accept Reschedule button in modal */}
+                {isRescheduled(viewApt) && viewApt.status === 'pending' && (
+                  <Button
+                    size="sm" className="flex-fill border-0 d-flex align-items-center justify-content-center gap-1"
+                    style={{ background: '#16a34a', color: '#fff', fontSize: 13, fontWeight: 600 }}
+                    disabled={accepting === viewApt.id}
+                    onClick={() => handleAcceptReschedule(viewApt.id)}
+                  >
+                    {accepting === viewApt.id ? 'Accepting…' : <><CheckCircle size={14} /> Accept Reschedule</>}
+                  </Button>
+                )}
+                {/* Send Note button in modal */}
+                {['pending', 'approved'].includes(viewApt.status) && (
+                  <Button
+                    size="sm" variant="outline-primary" className="flex-fill d-flex align-items-center justify-content-center gap-1"
+                    style={{ fontSize: 13, fontWeight: 600 }}
+                    onClick={() => { setShowNoteModal(viewApt); setNoteText(''); setNoteSuccess(''); setViewApt(null); }}
+                  >
+                    <MessageSquare size={14} /> Send Note
+                  </Button>
+                )}
+                {viewApt.status === 'pending' && !isRescheduled(viewApt) && (
                   <Button
                     size="sm" variant="light" className="border flex-fill"
                     style={{ fontSize: 13, color: '#991b1b', fontWeight: 600 }}
@@ -443,6 +568,67 @@ const UserAppointments = () => {
             </>
           );
         })()}
+      </Modal>
+
+      {/* Send Note to Admin Modal */}
+      <Modal show={!!showNoteModal} onHide={() => setShowNoteModal(null)} centered dialogClassName="bh-apt-modal">
+        {showNoteModal && (
+          <>
+            <Modal.Header closeButton style={{ borderBottom: '3px solid #3b82f6', padding: '16px 20px' }}>
+              <Modal.Title style={{ fontSize: 15, fontWeight: 700 }}>
+                <MessageSquare size={16} className="me-2" style={{ color: '#3b82f6' }} />
+                Send Note to Admin
+              </Modal.Title>
+            </Modal.Header>
+            <Form onSubmit={handleSendNote}>
+              <Modal.Body style={{ padding: 20 }}>
+                {noteSuccess && (
+                  <div className="mb-3 p-3 rounded-3 d-flex align-items-center gap-2"
+                    style={{ backgroundColor: '#dcfce7', color: '#14532d', fontSize: 13 }}>
+                    <CheckCircle size={16} /> {noteSuccess}
+                  </div>
+                )}
+                <div className="mb-3 p-3 rounded-3"
+                  style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 700, textTransform: 'uppercase', marginBottom: 4 }}>
+                    Regarding Appointment
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>{showNoteModal.service}</div>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                    {new Date(showNoteModal.date).toLocaleDateString('en-US', {
+                      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+                    })} at {showNoteModal.time}
+                  </div>
+                </div>
+                <Form.Group>
+                  <Form.Label style={{ fontSize: 12, fontWeight: 600 }}>Your Message to Admin</Form.Label>
+                  <Form.Control
+                    as="textarea"
+                    rows={4}
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    placeholder="Example: I'm not available on this date. Can you reschedule to next week?"
+                    required
+                    style={{ fontSize: 13, borderRadius: 10 }}
+                  />
+                  <Form.Text className="text-muted" style={{ fontSize: 11 }}>
+                    The admin will see this note attached to your appointment.
+                  </Form.Text>
+                </Form.Group>
+              </Modal.Body>
+              <Modal.Footer style={{ padding: '12px 20px', gap: 8, borderTop: '1px solid #f3f4f6' }}>
+                <Button variant="light" size="sm" onClick={() => setShowNoteModal(null)} style={{ fontSize: 13 }}>
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm" className="border-0 d-flex align-items-center gap-1"
+                  style={{ background: '#1d4ed8', fontSize: 13, fontWeight: 600 }}
+                  disabled={sendingNote || !noteText.trim()}>
+                  {sendingNote ? 'Sending...' : <><Send size={14} /> Send Note</>}
+                </Button>
+              </Modal.Footer>
+            </Form>
+          </>
+        )}
       </Modal>
 
       {/* Booking Modal */}
