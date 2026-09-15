@@ -7,12 +7,14 @@ import {
 import {
   Download, FileText, TrendingUp, Activity, Syringe, Printer,
   FileSpreadsheet, File, Calendar, CheckCircle2, ArrowUpRight,
-  ArrowDownRight, BarChart3, RefreshCw, Loader,
+  ArrowDownRight, BarChart3, RefreshCw, Loader, FileDown,
 } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { supabase } from '../../config/supabase';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 /* ── Helpers ── */
 const downloadCSV = (filename, headers, rows) => {
@@ -420,6 +422,110 @@ const Reports = () => {
   const handlePrint = () => window.print();
   const handleGenerate = () => { fetchData(); setShowPreview(true); };
 
+  /* ── PDF Export Helper ── */
+  const buildPDF = (title, sections) => {
+    const doc = new jsPDF();
+    const pageW = doc.internal.pageSize.getWidth();
+    let y = 15;
+
+    // Header bar
+    doc.setFillColor(15, 23, 42); // #0f172a
+    doc.rect(0, 0, pageW, 28, 'F');
+    doc.setFontSize(16);
+    doc.setTextColor(255, 255, 255);
+    doc.text(title, 14, 18);
+    doc.setFontSize(9);
+    doc.setTextColor(200, 200, 200);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, pageW - 14, 18, { align: 'right' });
+    y = 36;
+
+    sections.forEach((sec) => {
+      if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = 15; }
+
+      if (sec.type === 'subtitle') {
+        doc.setFontSize(12);
+        doc.setTextColor(17, 24, 39);
+        doc.text(sec.text, 14, y);
+        y += 8;
+      }
+
+      if (sec.type === 'stats') {
+        doc.setFontSize(9);
+        const colW = (pageW - 28) / sec.items.length;
+        sec.items.forEach((item, i) => {
+          const x = 14 + i * colW;
+          doc.setFillColor(248, 250, 252);
+          doc.roundedRect(x, y, colW - 4, 22, 3, 3, 'F');
+          doc.setTextColor(17, 24, 39);
+          doc.setFontSize(14);
+          doc.text(String(item.value), x + (colW - 4) / 2, y + 11, { align: 'center' });
+          doc.setFontSize(7);
+          doc.setTextColor(107, 114, 128);
+          doc.text(item.label, x + (colW - 4) / 2, y + 18, { align: 'center' });
+        });
+        y += 28;
+      }
+
+      if (sec.type === 'table') {
+        autoTable(doc, {
+          startY: y,
+          head: [sec.headers],
+          body: sec.rows,
+          theme: 'grid',
+          headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold' },
+          bodyStyles: { fontSize: 8, textColor: [55, 65, 81] },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          margin: { left: 14, right: 14 },
+          styles: { cellPadding: 3, lineColor: [229, 231, 235], lineWidth: 0.3 },
+        });
+        y = doc.lastAutoTable.finalY + 10;
+      }
+
+      if (sec.type === 'info') {
+        doc.setFontSize(8);
+        doc.setTextColor(107, 114, 128);
+        doc.text(sec.text, 14, y);
+        y += 6;
+      }
+    });
+
+    // Footer
+    const pages = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pages; i++) {
+      doc.setPage(i);
+      const h = doc.internal.pageSize.getHeight();
+      doc.setFontSize(7);
+      doc.setTextColor(156, 163, 175);
+      doc.text('B-Health Management System', 14, h - 8);
+      doc.text(`Page ${i} of ${pages}`, pageW - 14, h - 8, { align: 'right' });
+    }
+
+    return doc;
+  };
+
+  /* ── Main page PDF export ── */
+  const handleExportPDF = () => {
+    const svcLabel = selectedService === 'all' ? 'All Services' : selectedService;
+    const sections = [
+      { type: 'info', text: `Service: ${svcLabel} | Period: ${dateLabel} | Mode: ${dateMode}` },
+      { type: 'subtitle', text: 'Summary' },
+      { type: 'stats', items: [
+        { label: 'Total Appointments', value: totals.totalAppointments },
+        { label: 'Completed', value: totals.totalCompleted },
+        { label: 'Pending', value: totals.totalPending },
+        { label: 'Completion Rate', value: `${totals.completionRate}%` },
+      ]},
+      { type: 'subtitle', text: 'Appointments' },
+      { type: 'table', headers: ['Date', 'Time', 'Patient', 'Service', 'Status', 'Handled By'],
+        rows: filteredAppointments.slice(0, 100).map(a => [a.date, a.time || '', a.name || '', a.service || '', a.status || '', a.handled_by || '']) },
+      { type: 'subtitle', text: 'Service Breakdown' },
+      { type: 'table', headers: ['Service', 'Count', 'Percentage'],
+        rows: serviceBreakdown.map(s => [s.name, String(s.value), `${s.pct}%`]) },
+    ];
+    const doc = buildPDF(`B-Health Report — ${svcLabel}`, sections);
+    doc.save(`B-Health-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   /* ── Per-service report generation with custom date range ── */
   const openSvcModal = (svc) => {
     const d = new Date(); d.setMonth(d.getMonth() - 3); d.setDate(1);
@@ -664,6 +770,103 @@ const Reports = () => {
     }
   };
 
+  /* ── PDF export for separate reports (Overall / Appointments / Health Records) ── */
+  const exportReportPDF = () => {
+    if (!rptData || !reportModal) return;
+    const { dateRange } = rptData;
+
+    if (reportModal === 'overall') {
+      const sections = [
+        { type: 'info', text: `Period: ${dateRange.start} to ${dateRange.end}` },
+        { type: 'subtitle', text: 'Summary' },
+        { type: 'stats', items: [
+          { label: 'Appointments', value: rptData.totals.appointments },
+          { label: 'Completed', value: rptData.totals.completed },
+          { label: 'Rate', value: `${rptData.totals.completionRate}%` },
+          { label: 'Vaccinations', value: rptData.totals.vaccinations },
+          { label: 'Health Records', value: rptData.totals.healthRecords },
+        ]},
+        { type: 'subtitle', text: 'Appointments' },
+        { type: 'table', headers: ['Date', 'Time', 'Patient', 'Service', 'Status'],
+          rows: rptData.appointments.slice(0, 100).map(a => [a.date, a.time || '', a.name || '', a.service || '', a.status || '']) },
+        { type: 'subtitle', text: 'Health Records' },
+        { type: 'table', headers: ['Date', 'Patient', 'Type', 'Diagnosis', 'Doctor'],
+          rows: rptData.healthRecords.slice(0, 100).map(r => [r.date, r.patient || '', r.type || '', r.diagnosis || '', r.doctor || '']) },
+      ];
+      buildPDF('Overall Health Center Report', sections).save(`B-Health-Overall-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+
+    } else if (reportModal === 'appointments') {
+      const sections = [
+        { type: 'info', text: `Period: ${dateRange.start} to ${dateRange.end}` },
+        { type: 'subtitle', text: 'Summary' },
+        { type: 'stats', items: [
+          { label: 'Total', value: rptData.totals.total },
+          { label: 'Completed', value: rptData.totals.completed },
+          { label: 'Pending', value: rptData.totals.pending },
+          { label: 'Approved', value: rptData.totals.approved },
+          { label: 'Rejected', value: rptData.totals.rejected },
+          { label: 'Rate', value: `${rptData.totals.rate}%` },
+        ]},
+        { type: 'subtitle', text: 'All Appointments' },
+        { type: 'table', headers: ['Date', 'Time', 'Patient', 'Service', 'Status', 'Handled By'],
+          rows: rptData.appointments.slice(0, 200).map(a => [a.date, a.time || '', a.name || '', a.service || '', a.status || '', a.handled_by || '']) },
+      ];
+      if (rptData.serviceBreakdown?.length) {
+        sections.push({ type: 'subtitle', text: 'Service Breakdown' });
+        sections.push({ type: 'table', headers: ['Service', 'Count'],
+          rows: rptData.serviceBreakdown.map(s => [s.name, String(s.value)]) });
+      }
+      buildPDF('Appointments Report', sections).save(`B-Health-Appointments-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+
+    } else if (reportModal === 'health-records') {
+      const sections = [
+        { type: 'info', text: `Period: ${dateRange.start} to ${dateRange.end}` },
+        { type: 'subtitle', text: 'Summary' },
+        { type: 'stats', items: [
+          { label: 'Total Records', value: rptData.totals.total },
+          { label: 'Closed', value: rptData.totals.closed },
+          { label: 'Open/Active', value: rptData.totals.open },
+        ]},
+        { type: 'subtitle', text: 'All Health Records' },
+        { type: 'table', headers: ['Date', 'Patient', 'Type', 'Diagnosis', 'Doctor', 'Status'],
+          rows: rptData.healthRecords.slice(0, 200).map(r => [r.date, r.patient || '', r.type || '', r.diagnosis || '', r.doctor || '', r.status || '']) },
+      ];
+      if (rptData.typeBreakdown?.length) {
+        sections.push({ type: 'subtitle', text: 'Type Breakdown' });
+        sections.push({ type: 'table', headers: ['Type', 'Count'],
+          rows: rptData.typeBreakdown.map(t => [t.name, String(t.value)]) });
+      }
+      buildPDF('Health Records Report', sections).save(`B-Health-HealthRecords-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+    }
+  };
+
+  /* ── PDF export for per-service report ── */
+  const exportSvcReportPDF = () => {
+    if (!svcReportData || !svcModal) return;
+    const { totals: t, dateRange } = svcReportData;
+    const sections = [
+      { type: 'info', text: `Service: ${svcModal.name} | Period: ${dateRange.start} to ${dateRange.end}` },
+      { type: 'subtitle', text: 'Summary' },
+      { type: 'stats', items: [
+        { label: 'Total', value: t.total },
+        { label: 'Completed', value: t.completed },
+        { label: 'Pending', value: t.pending },
+        { label: 'Approved', value: t.approved },
+        { label: 'Rate', value: `${t.rate}%` },
+      ]},
+      { type: 'subtitle', text: 'Appointments' },
+      { type: 'table', headers: ['Date', 'Time', 'Patient', 'Status', 'Handled By'],
+        rows: svcReportData.appointments.slice(0, 200).map(a => [a.date, a.time || '', a.name || '', a.status || '', a.handled_by || '']) },
+    ];
+    if (svcReportData.vaccinations.length) {
+      sections.push({ type: 'subtitle', text: 'Vaccinations' });
+      sections.push({ type: 'table', headers: ['Date', 'Patient', 'Vaccine', 'Dose', 'Status'],
+        rows: svcReportData.vaccinations.map(v => [v.date, v.patient || '', v.vaccine || '', v.dose || '', v.status || '']) });
+    }
+    const name = svcModal.name.replace(/[^a-zA-Z0-9]/g, '');
+    buildPDF(`${svcModal.name} Report`, sections).save(`B-Health-${name}-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
   const generateSvcReport = async () => {
     if (!svcModal || !svcStartDate || !svcEndDate) return;
     setSvcLoading(true);
@@ -872,6 +1075,9 @@ const Reports = () => {
             <Dropdown.Menu align="end" style={{ fontSize: 12, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
               <Dropdown.Item onClick={handleExportExcel} className="d-flex align-items-center gap-2 py-2">
                 <FileSpreadsheet size={14} color="#16a34a" /> Export as Excel (.xlsx)
+              </Dropdown.Item>
+              <Dropdown.Item onClick={handleExportPDF} className="d-flex align-items-center gap-2 py-2">
+                <FileDown size={14} color="#dc2626" /> Export as PDF
               </Dropdown.Item>
               <Dropdown.Item onClick={handleExportSummary} className="d-flex align-items-center gap-2 py-2">
                 <FileSpreadsheet size={14} color="#6b7280" /> Export as CSV
@@ -1458,7 +1664,11 @@ const Reports = () => {
           <Button variant="light" size="sm" onClick={() => setShowPreview(false)} className="rounded-3">Close</Button>
           <Button size="sm" onClick={() => { handleExportExcel(); setShowPreview(false); }}
             className="rounded-3 d-flex align-items-center gap-1" style={{ background: '#16a34a', border: 'none' }}>
-            <FileSpreadsheet size={14} /> Download Excel
+            <FileSpreadsheet size={14} /> Excel
+          </Button>
+          <Button size="sm" onClick={() => { handleExportPDF(); setShowPreview(false); }}
+            className="rounded-3 d-flex align-items-center gap-1" style={{ background: '#dc2626', border: 'none' }}>
+            <FileDown size={14} /> PDF
           </Button>
           <Button size="sm" onClick={() => { handleExportSummary(); setShowPreview(false); }}
             className="rounded-3 d-flex align-items-center gap-1" variant="outline-success">
@@ -1636,6 +1846,11 @@ const Reports = () => {
           <Button variant="light" size="sm" onClick={() => setSvcModal(null)} className="rounded-3">Close</Button>
           <Button size="sm" onClick={() => window.print()} variant="outline-secondary" className="rounded-3 d-flex align-items-center gap-1" disabled={!svcReportData}>
             <Printer size={14} /> Print
+          </Button>
+          <Button size="sm" onClick={exportSvcReportPDF}
+            className="rounded-3 d-flex align-items-center gap-1 border-0" disabled={!svcReportData}
+            style={{ background: '#dc2626' }}>
+            <FileDown size={14} /> PDF
           </Button>
           <Button size="sm" onClick={exportSvcReport}
             className="rounded-3 d-flex align-items-center gap-1 border-0" disabled={!svcReportData}
@@ -1977,10 +2192,15 @@ const Reports = () => {
           <Button size="sm" onClick={() => window.print()} variant="outline-secondary" className="rounded-3 d-flex align-items-center gap-1" disabled={!rptData}>
             <Printer size={14} /> Print
           </Button>
+          <Button size="sm" onClick={exportReportPDF}
+            className="rounded-3 d-flex align-items-center gap-1 border-0" disabled={!rptData}
+            style={{ background: '#dc2626' }}>
+            <FileDown size={14} /> PDF
+          </Button>
           <Button size="sm" onClick={exportReport}
             className="rounded-3 d-flex align-items-center gap-1 border-0" disabled={!rptData}
             style={{ background: '#0f172a' }}>
-            <FileSpreadsheet size={14} /> Download Excel
+            <FileSpreadsheet size={14} /> Excel
           </Button>
         </Modal.Footer>
       </Modal>
