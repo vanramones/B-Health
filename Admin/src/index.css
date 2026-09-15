@@ -309,14 +309,29 @@ p {
 .modal .react-datepicker__close-icon::after {
   background-color: #9ca3af !important;
 }
-/* Inline calendar inside modals */
-.modal .react-datepicker--inline {
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 12px !important;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+/* DatePicker inside modals - wrapper must contain the popper */
+.bh-dp-modal {
+  position: relative;
 }
-.modal .react-datepicker__month-container {
-  padding: 4px !important;
+.bh-dp-modal .react-datepicker-popper {
+  z-index: 9999 !important;
+  position: absolute !important;
+}
+.bh-dp-modal-input {
+  background: #fff !important;
+  color: #374151 !important;
+  border: 1px solid #d1d5db !important;
+}
+.bh-dp-modal-input::placeholder {
+  color: #9ca3af !important;
+}
+.bh-dp-modal-input:focus {
+  border-color: #3b82f6 !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+}
+.bh-dp-modal .react-datepicker__close-icon::after {
+  background-color: #9ca3af !important;
 }
 
 /* ===== React DatePicker Popup ===== */
