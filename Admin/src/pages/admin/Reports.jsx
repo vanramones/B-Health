@@ -51,6 +51,26 @@ const ChartTooltip = ({ active, payload, label }) => {
   );
 };
 
+/* ── Status badge for per-service modal ── */
+const StatusBadge = ({ status }) => {
+  const styles = {
+    completed: { bg: '#dcfce7', color: '#15803d' },
+    pending: { bg: '#fef3c7', color: '#b45309' },
+    approved: { bg: '#dbeafe', color: '#1d4ed8' },
+    rejected: { bg: '#fee2e2', color: '#b91c1c' },
+  };
+  const s = styles[status] || { bg: '#f3f4f6', color: '#6b7280' };
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 8px', borderRadius: 999,
+      fontSize: 10, fontWeight: 600, backgroundColor: s.bg, color: s.color,
+      textTransform: 'capitalize',
+    }}>
+      {status}
+    </span>
+  );
+};
+
 /* ════════════════ Main Component ════════════════ */
 const Reports = () => {
   const [dateMode, setDateMode] = useState('monthly');
@@ -63,6 +83,14 @@ const Reports = () => {
   const [activeChart, setActiveChart] = useState('bar');
   const [loading, setLoading] = useState(true);
   const printRef = useRef(null);
+
+  /* ── Per-service report modal state ── */
+  const [svcModal, setSvcModal] = useState(null); // { service, color }
+  const [svcDateMode, setSvcDateMode] = useState('monthly');
+  const [svcStartDate, setSvcStartDate] = useState(null);
+  const [svcEndDate, setSvcEndDate] = useState(null);
+  const [svcReportData, setSvcReportData] = useState(null);
+  const [svcLoading, setSvcLoading] = useState(false);
 
   /* ── Live data state ── */
   const [appointments, setAppointments] = useState([]);
@@ -377,6 +405,115 @@ const Reports = () => {
   };
   const handlePrint = () => window.print();
   const handleGenerate = () => { fetchData(); setShowPreview(true); };
+
+  /* ── Per-service report generation with custom date range ── */
+  const openSvcModal = (svc) => {
+    const d = new Date(); d.setMonth(d.getMonth() - 3); d.setDate(1);
+    setSvcModal(svc);
+    setSvcDateMode('monthly');
+    setSvcStartDate(d);
+    setSvcEndDate(new Date());
+    setSvcReportData(null);
+    setSvcLoading(false);
+  };
+
+  const generateSvcReport = async () => {
+    if (!svcModal || !svcStartDate || !svcEndDate) return;
+    setSvcLoading(true);
+    try {
+      const isoStart = svcStartDate.toISOString().slice(0, 10);
+      const isoEnd = svcEndDate.toISOString().slice(0, 10);
+      const [apptRes, vaccRes] = await Promise.all([
+        supabase.from('appointments').select('id, name, date, time, status, service, notes, handled_by')
+          .is('deleted_at', null).eq('service', svcModal.name)
+          .gte('date', isoStart).lte('date', isoEnd).order('date', { ascending: true }),
+        supabase.from('vaccinations').select('id, patient, date, vaccine, dose, status, administered_by, site, notes')
+          .is('deleted_at', null).gte('date', isoStart).lte('date', isoEnd)
+          .order('date', { ascending: true }),
+      ]);
+      const appts = apptRes.data || [];
+      const svcKey = svcModal.name.toLowerCase().split(' ')[0];
+      const vaccs = (vaccRes.data || []).filter(v => v.vaccine?.toLowerCase().includes(svcKey));
+      const completed = appts.filter(a => a.status === 'completed').length;
+      const pending = appts.filter(a => a.status === 'pending').length;
+      const approved = appts.filter(a => a.status === 'approved').length;
+      const rate = appts.length ? Math.round((completed / appts.length) * 100) : 0;
+
+      // Build chart data
+      const chartMap = {};
+      appts.forEach(a => {
+        if (!a.date) return;
+        const d = new Date(a.date);
+        const key = svcDateMode === 'monthly'
+          ? `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
+          : `${d.getFullYear()}-W${Math.ceil((Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 86400000) + new Date(d.getFullYear(), 0, 1).getDay() + 1) / 7)}`;
+        const label = svcDateMode === 'monthly'
+          ? MONTH_NAMES[d.getMonth()]
+          : `W${Math.ceil((Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 86400000) + new Date(d.getFullYear(), 0, 1).getDay() + 1) / 7)}`;
+        if (!chartMap[key]) chartMap[key] = { label, total: 0, completed: 0, sortKey: key };
+        chartMap[key].total += 1;
+        if (a.status === 'completed') chartMap[key].completed += 1;
+      });
+      const chart = Object.values(chartMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+      setSvcReportData({
+        appointments: appts, vaccinations: vaccs,
+        totals: { total: appts.length, completed, pending, approved, rate },
+        chart,
+        dateRange: { start: isoStart, end: isoEnd },
+      });
+    } catch (err) {
+      console.error('Service report error:', err);
+    } finally {
+      setSvcLoading(false);
+    }
+  };
+
+  const exportSvcReport = () => {
+    if (!svcReportData || !svcModal) return;
+    const wb = XLSX.utils.book_new();
+    const today = new Date().toISOString().split('T')[0];
+    const svcName = svcModal.name.replace(/[^a-zA-Z0-9]/g, '');
+    const { appointments: appts, vaccinations: vaccs, totals: t, dateRange } = svcReportData;
+
+    // Sheet 1: Summary
+    const summary = [
+      { 'Metric': 'Service', 'Value': svcModal.name },
+      { 'Metric': 'Date Range', 'Value': `${dateRange.start} to ${dateRange.end}` },
+      { 'Metric': 'Mode', 'Value': svcDateMode },
+      { 'Metric': 'Total Appointments', 'Value': t.total },
+      { 'Metric': 'Completed', 'Value': t.completed },
+      { 'Metric': 'Pending', 'Value': t.pending },
+      { 'Metric': 'Approved', 'Value': t.approved },
+      { 'Metric': 'Completion Rate', 'Value': `${t.rate}%` },
+      { 'Metric': 'Vaccinations', 'Value': vaccs.length },
+    ];
+    const ws1 = XLSX.utils.json_to_sheet(summary);
+    ws1['!cols'] = [{ wch: 22 }, { wch: 28 }];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
+
+    // Sheet 2: Appointments
+    const apptRows = appts.map(a => ({
+      'Date': a.date || '', 'Time': a.time || '', 'Patient': a.name || '',
+      'Status': a.status || '', 'Handled By': a.handled_by || '', 'Notes': a.notes || '',
+    }));
+    if (apptRows.length === 0) apptRows.push({ 'Date': 'No records', 'Time': '', 'Patient': '', 'Status': '', 'Handled By': '', 'Notes': '' });
+    const ws2 = XLSX.utils.json_to_sheet(apptRows);
+    ws2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 24 }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Appointments');
+
+    // Sheet 3: Vaccinations
+    const vaccRows = vaccs.map(v => ({
+      'Date': v.date || '', 'Patient': v.patient || '', 'Vaccine': v.vaccine || '',
+      'Dose': v.dose || '', 'Status': v.status || '', 'Administered By': v.administered_by || '',
+    }));
+    if (vaccRows.length === 0) vaccRows.push({ 'Date': 'No records', 'Patient': '', 'Vaccine': '', 'Dose': '', 'Status': '', 'Administered By': '' });
+    const ws3 = XLSX.utils.json_to_sheet(vaccRows);
+    ws3['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 16 }, { wch: 8 }, { wch: 12 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Vaccinations');
+
+    XLSX.writeFile(wb, `B-Health-${svcName}-Report-${today}.xlsx`);
+  };
 
   /* ── Stat cards ── */
   const summaryCards = [
@@ -841,14 +978,24 @@ const Reports = () => {
                         </div>
                         <span className="fw-bold" style={{ fontSize: 13, color: '#111827' }}>{svc.name}</span>
                       </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSelectedService(svc.name); handleExportExcel(); }}
-                        className="border-0 rounded-2 px-2 py-1 d-flex align-items-center gap-1"
-                        style={{ background: `${svc.color}12`, color: svc.color, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
-                        title={`Export ${svc.name} report`}
-                      >
-                        <FileSpreadsheet size={12} /> Export
-                      </button>
+                      <div className="d-flex gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openSvcModal(svc); }}
+                          className="border-0 rounded-2 px-2 py-1 d-flex align-items-center gap-1"
+                          style={{ background: `${svc.color}12`, color: svc.color, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                          title={`Generate report for ${svc.name}`}
+                        >
+                          <Calendar size={12} /> Generate
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setSelectedService(svc.name); handleExportExcel(); }}
+                          className="border-0 rounded-2 px-2 py-1 d-flex align-items-center gap-1"
+                          style={{ background: `${svc.color}12`, color: svc.color, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                          title={`Export ${svc.name} report`}
+                        >
+                          <FileSpreadsheet size={12} /> Export
+                        </button>
+                      </div>
                     </div>
                     <div className="d-flex align-items-center gap-3 mb-2" style={{ fontSize: 11 }}>
                       <span style={{ color: '#6b7280' }}>
@@ -991,6 +1138,182 @@ const Reports = () => {
           </Button>
           <Button size="sm" onClick={handlePrint} variant="outline-secondary" className="rounded-3 d-flex align-items-center gap-1">
             <Printer size={14} /> Print
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ── Per-Service Report Modal with Calendar ── */}
+      <Modal show={!!svcModal} onHide={() => setSvcModal(null)} centered size="lg">
+        <Modal.Header closeButton style={{ borderBottom: '1px solid #f1f5f9' }}>
+          <div className="d-flex align-items-center gap-2">
+            {svcModal && (
+              <div className="d-flex align-items-center justify-content-center rounded-3"
+                style={{ width: 36, height: 36, background: `${svcModal.color}15`, color: svcModal.color }}>
+                <Activity size={18} />
+              </div>
+            )}
+            <div>
+              <Modal.Title style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
+                {svcModal ? svcModal.name : ''} Report
+              </Modal.Title>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>Generate a detailed report with custom date range</div>
+            </div>
+          </div>
+        </Modal.Header>
+        <Modal.Body className="p-4">
+          {/* Calendar / Date Range Section */}
+          <div className="p-3 rounded-3 mb-3" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+            <div className="d-flex align-items-center gap-2 mb-3">
+              <Calendar size={16} color={svcModal?.color || '#16a34a'} />
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Select Date Range</span>
+            </div>
+            <Row className="align-items-center g-2">
+              <Col xs={12} md="auto">
+                <div className="d-flex align-items-center gap-1 p-1 rounded-2" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
+                  {['weekly', 'monthly'].map(m => (
+                    <button key={m} onClick={() => setSvcDateMode(m)}
+                      className="border-0 rounded-2 px-3 py-1"
+                      style={{
+                        fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s',
+                        background: svcDateMode === m ? (svcModal?.color || '#16a34a') : 'transparent',
+                        color: svcDateMode === m ? '#fff' : '#64748b',
+                        textTransform: 'capitalize',
+                      }}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </Col>
+              <Col xs={12} md="auto" className="flex-grow-1">
+                <div className="bh-dp-wrapper">
+                  <DatePicker
+                    selected={svcStartDate}
+                    onChange={(dates) => { const [s, e] = dates; setSvcStartDate(s); setSvcEndDate(e); }}
+                    startDate={svcStartDate}
+                    endDate={svcEndDate}
+                    selectsRange
+                    dateFormat={svcDateMode === 'weekly' ? 'MMM dd, yyyy' : 'MMM yyyy'}
+                    showMonthYearPicker={svcDateMode === 'monthly'}
+                    showWeekNumbers={svcDateMode === 'weekly'}
+                    className="bh-dp-input bh-dp-range"
+                    placeholderText="Select date range"
+                    monthsShown={svcDateMode === 'weekly' ? 2 : 1}
+                    isClearable
+                    portalId="datepicker-portal"
+                  />
+                </div>
+              </Col>
+              <Col xs={12} md="auto">
+                <button onClick={generateSvcReport}
+                  disabled={!svcStartDate || !svcEndDate || svcLoading}
+                  className="border-0 rounded-3 px-4 py-2 d-flex align-items-center gap-2"
+                  style={{
+                    background: svcModal?.color || '#16a34a', color: '#fff',
+                    fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                    opacity: (!svcStartDate || !svcEndDate || svcLoading) ? 0.5 : 1,
+                  }}>
+                  {svcLoading ? <Spinner size="sm" animation="border" /> : <RefreshCw size={14} />}
+                  {svcLoading ? 'Generating...' : 'Generate Report'}
+                </button>
+              </Col>
+            </Row>
+          </div>
+
+          {/* Report Results */}
+          {svcReportData && (
+            <>
+              <div className="p-3 rounded-3 mb-3" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+                <div className="d-flex align-items-center gap-2" style={{ fontSize: 12 }}>
+                  <CheckCircle2 size={15} color="#16a34a" />
+                  <span style={{ color: '#166534', fontWeight: 500 }}>
+                    Report generated for <strong>{svcReportData.dateRange.start}</strong> to <strong>{svcReportData.dateRange.end}</strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Stats */}
+              <Row className="g-2 mb-3">
+                {[
+                  { label: 'Total', value: svcReportData.totals.total, color: '#1d4ed8' },
+                  { label: 'Completed', value: svcReportData.totals.completed, color: '#16a34a' },
+                  { label: 'Pending', value: svcReportData.totals.pending, color: '#b45309' },
+                  { label: 'Approved', value: svcReportData.totals.approved, color: '#7c3aed' },
+                  { label: 'Rate', value: `${svcReportData.totals.rate}%`, color: '#be185d' },
+                  { label: 'Vaccinations', value: svcReportData.vaccinations.length, color: '#0891b2' },
+                ].map((s) => (
+                  <Col key={s.label} xs={6} md={2}>
+                    <div className="text-center p-2 rounded-3" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{s.value}</div>
+                      <div style={{ fontSize: 10, color: '#6b7280' }}>{s.label}</div>
+                    </div>
+                  </Col>
+                ))}
+              </Row>
+
+              {/* Mini Chart */}
+              {svcReportData.chart.length > 0 && (
+                <div className="mb-3">
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+                    {svcDateMode === 'weekly' ? 'Weekly' : 'Monthly'} Appointments Trend
+                  </div>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={svcReportData.chart} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Bar dataKey="total" name="Total" fill={svcModal?.color || '#3b82f6'} radius={[4, 4, 0, 0]} barSize={20} />
+                      <Bar dataKey="completed" name="Completed" fill="#16a34a" radius={[4, 4, 0, 0]} barSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* Recent Appointments Table */}
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
+                Recent Appointments ({svcReportData.appointments.length})
+              </div>
+              <div className="table-responsive-wrapper" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                <Table hover size="sm" className="mb-0 align-middle">
+                  <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
+                    <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
+                      <th className="px-3 py-2">Date</th>
+                      <th className="py-2">Patient</th>
+                      <th className="py-2">Status</th>
+                      <th className="py-2">Handled By</th>
+                    </tr>
+                  </thead>
+                  <tbody style={{ fontSize: 12 }}>
+                    {svcReportData.appointments.slice(0, 20).map((a) => (
+                      <tr key={a.id}>
+                        <td className="px-3 py-2" style={{ color: '#6b7280' }}>{a.date}</td>
+                        <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{a.name}</td>
+                        <td className="py-2"><StatusBadge status={a.status} /></td>
+                        <td className="py-2" style={{ color: '#6b7280' }}>{a.handled_by || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
+            </>
+          )}
+
+          {!svcReportData && !svcLoading && (
+            <div className="d-flex flex-column align-items-center justify-content-center" style={{ height: 200, color: '#9ca3af' }}>
+              <Calendar size={32} color="#cbd5e1" style={{ marginBottom: 8 }} />
+              <div style={{ fontSize: 13 }}>Select a date range and click Generate Report</div>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer style={{ borderTop: '1px solid #f1f5f9' }}>
+          <Button variant="light" size="sm" onClick={() => setSvcModal(null)} className="rounded-3">Close</Button>
+          <Button size="sm" onClick={() => window.print()} variant="outline-secondary" className="rounded-3 d-flex align-items-center gap-1" disabled={!svcReportData}>
+            <Printer size={14} /> Print
+          </Button>
+          <Button size="sm" onClick={exportSvcReport}
+            className="rounded-3 d-flex align-items-center gap-1 border-0" disabled={!svcReportData}
+            style={{ background: svcModal?.color || '#16a34a' }}>
+            <FileSpreadsheet size={14} /> Download Excel
           </Button>
         </Modal.Footer>
       </Modal>
