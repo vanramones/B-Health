@@ -309,6 +309,15 @@ p {
 .modal .react-datepicker__close-icon::after {
   background-color: #9ca3af !important;
 }
+/* Inline calendar inside modals */
+.modal .react-datepicker--inline {
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;
+}
+.modal .react-datepicker__month-container {
+  padding: 4px !important;
+}
 
 /* ===== React DatePicker Popup ===== */
 .react-datepicker-wrapper {

@@ -1512,36 +1512,6 @@ const Reports = () => {
                   ))}
                 </div>
               </Col>
-              <Col xs={12} md="auto" className="flex-grow-1">
-                <div className="bh-dp-wrapper">
-                  <DatePicker
-                    selected={svcStartDate}
-                    onChange={(dates) => { const [s, e] = dates; setSvcStartDate(s); setSvcEndDate(e); }}
-                    startDate={svcStartDate}
-                    endDate={svcEndDate}
-                    selectsRange
-                    dateFormat={svcDateMode === 'weekly' ? 'MMM dd, yyyy' : 'MMM yyyy'}
-                    showMonthYearPicker={svcDateMode === 'monthly'}
-                    showWeekNumbers={svcDateMode === 'weekly'}
-                    className="bh-dp-input bh-dp-range"
-                    placeholderText="Select date range"
-                    monthsShown={svcDateMode === 'weekly' ? 2 : 1}
-                    isClearable
-                    popperPlacement="bottom-start"
-                    popperClassName="modal-datepicker-popper"
-                    popperModifiers={[
-                      {
-                        name: 'preventOverflow',
-                        options: {
-                          rootBoundary: 'viewport',
-                          tether: false,
-                          altAxis: true,
-                        },
-                      },
-                    ]}
-                  />
-                </div>
-              </Col>
               <Col xs={12} md="auto">
                 <button onClick={generateSvcReport}
                   disabled={!svcStartDate || !svcEndDate || svcLoading}
@@ -1556,6 +1526,34 @@ const Reports = () => {
                 </button>
               </Col>
             </Row>
+            {/* Inline calendar inside modal */}
+            <div className="d-flex justify-content-center mt-3">
+              <DatePicker
+                selected={svcStartDate}
+                onChange={(dates) => { const [s, e] = dates; setSvcStartDate(s); setSvcEndDate(e); }}
+                startDate={svcStartDate}
+                endDate={svcEndDate}
+                selectsRange
+                showMonthYearPicker={svcDateMode === 'monthly'}
+                showWeekNumbers={svcDateMode === 'weekly'}
+                monthsShown={svcDateMode === 'weekly' ? 2 : 1}
+                inline
+              />
+            </div>
+            {svcStartDate && svcEndDate && (
+              <div className="d-flex align-items-center justify-content-center gap-2 mt-2" style={{ fontSize: 12, color: '#374151' }}>
+                <Calendar size={14} color="#6b7280" />
+                <span>
+                  <strong>{svcStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+                  {' — '}
+                  <strong>{svcEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+                </span>
+                <button onClick={() => { setSvcStartDate(null); setSvcEndDate(null); }}
+                  className="border-0 bg-transparent" style={{ cursor: 'pointer', color: '#9ca3af', fontSize: 11 }}>
+                  Clear
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Report Results */}
@@ -1709,36 +1707,6 @@ const Reports = () => {
                   ))}
                 </div>
               </Col>
-              <Col xs={12} md="auto" className="flex-grow-1">
-                <div className="bh-dp-wrapper">
-                  <DatePicker
-                    selected={rptStartDate}
-                    onChange={(dates) => { const [s, e] = dates; setRptStartDate(s); setRptEndDate(e); }}
-                    startDate={rptStartDate}
-                    endDate={rptEndDate}
-                    selectsRange
-                    dateFormat={rptDateMode === 'weekly' ? 'MMM dd, yyyy' : 'MMM yyyy'}
-                    showMonthYearPicker={rptDateMode === 'monthly'}
-                    showWeekNumbers={rptDateMode === 'weekly'}
-                    className="bh-dp-input bh-dp-range"
-                    placeholderText="Select date range"
-                    monthsShown={rptDateMode === 'weekly' ? 2 : 1}
-                    isClearable
-                    popperPlacement="bottom-start"
-                    popperClassName="modal-datepicker-popper"
-                    popperModifiers={[
-                      {
-                        name: 'preventOverflow',
-                        options: {
-                          rootBoundary: 'viewport',
-                          tether: false,
-                          altAxis: true,
-                        },
-                      },
-                    ]}
-                  />
-                </div>
-              </Col>
               <Col xs={12} md="auto">
                 <button onClick={generateReport}
                   disabled={!rptStartDate || !rptEndDate || rptLoading}
@@ -1752,6 +1720,34 @@ const Reports = () => {
                 </button>
               </Col>
             </Row>
+            {/* Inline calendar inside modal */}
+            <div className="d-flex justify-content-center mt-3">
+              <DatePicker
+                selected={rptStartDate}
+                onChange={(dates) => { const [s, e] = dates; setRptStartDate(s); setRptEndDate(e); }}
+                startDate={rptStartDate}
+                endDate={rptEndDate}
+                selectsRange
+                showMonthYearPicker={rptDateMode === 'monthly'}
+                showWeekNumbers={rptDateMode === 'weekly'}
+                monthsShown={rptDateMode === 'weekly' ? 2 : 1}
+                inline
+              />
+            </div>
+            {rptStartDate && rptEndDate && (
+              <div className="d-flex align-items-center justify-content-center gap-2 mt-2" style={{ fontSize: 12, color: '#374151' }}>
+                <Calendar size={14} color="#6b7280" />
+                <span>
+                  <strong>{rptStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+                  {' — '}
+                  <strong>{rptEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+                </span>
+                <button onClick={() => { setRptStartDate(null); setRptEndDate(null); }}
+                  className="border-0 bg-transparent" style={{ cursor: 'pointer', color: '#9ca3af', fontSize: 11 }}>
+                  Clear
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Report Results */}
