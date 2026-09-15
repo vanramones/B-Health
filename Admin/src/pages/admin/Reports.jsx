@@ -54,6 +54,7 @@ const ChartTooltip = ({ active, payload, label }) => {
 /* ════════════════ Main Component ════════════════ */
 const Reports = () => {
   const [dateMode, setDateMode] = useState('monthly');
+  const [selectedService, setSelectedService] = useState('all');
   const [startDate, setStartDate] = useState(() => {
     const d = new Date(); d.setMonth(d.getMonth() - 8); d.setDate(1); return d;
   });
@@ -108,11 +109,26 @@ const Reports = () => {
     return () => supabase.removeChannel(ch);
   }, [fetchData]);
 
+  /* ── Filter appointments by selected service ── */
+  const filteredAppointments = useMemo(() => {
+    if (selectedService === 'all') return appointments;
+    return appointments.filter(a => a.service === selectedService);
+  }, [appointments, selectedService]);
+
+  /* ── Unique service names from appointments ── */
+  const serviceNames = useMemo(() => {
+    const set = new Set();
+    appointments.forEach(a => { if (a.service) set.add(a.service); });
+    services.forEach(s => { if (s.name) set.add(s.name); });
+    return Array.from(set).sort();
+  }, [appointments, services]);
+
   /* ── Compute chart data from real records ── */
   const chartData = useMemo(() => {
+    const appts = filteredAppointments;
     if (dateMode === 'monthly') {
       const map = {};
-      appointments.forEach(a => {
+      appts.forEach(a => {
         if (!a.date) return;
         const d = new Date(a.date);
         const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
@@ -122,6 +138,7 @@ const Reports = () => {
       });
       vaccinations.forEach(v => {
         if (!v.date) return;
+        if (selectedService !== 'all' && !v.vaccine?.toLowerCase().includes(selectedService.toLowerCase().split(' ')[0])) return;
         const d = new Date(v.date);
         const key = `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`;
         if (!map[key]) map[key] = { month: MONTH_NAMES[d.getMonth()], appointments: 0, completed: 0, vaccinations: 0, sortKey: key };
@@ -137,7 +154,7 @@ const Reports = () => {
       const weekNum = Math.ceil(((d - startOfYear) / 86400000 + startOfYear.getDay() + 1) / 7);
       return { key: `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`, label: `Week ${weekNum}` };
     };
-    appointments.forEach(a => {
+    appts.forEach(a => {
       if (!a.date) return;
       const { key, label } = getWeekKey(a.date);
       if (!map[key]) map[key] = { week: label, appointments: 0, completed: 0, vaccinations: 0, sortKey: key };
@@ -146,23 +163,33 @@ const Reports = () => {
     });
     vaccinations.forEach(v => {
       if (!v.date) return;
+      if (selectedService !== 'all' && !v.vaccine?.toLowerCase().includes(selectedService.toLowerCase().split(' ')[0])) return;
       const { key, label } = getWeekKey(v.date);
       if (!map[key]) map[key] = { week: label, appointments: 0, completed: 0, vaccinations: 0, sortKey: key };
       map[key].vaccinations += 1;
     });
     return Object.values(map).sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-  }, [appointments, vaccinations, dateMode]);
+  }, [filteredAppointments, vaccinations, dateMode, selectedService]);
 
   const xKey = dateMode === 'weekly' ? 'week' : 'month';
 
   /* ── Totals from real data ── */
   const totals = useMemo(() => {
-    const ta = appointments.length;
-    const tc = appointments.filter(a => a.status === 'completed').length;
-    const tv = vaccinations.length;
+    const ta = filteredAppointments.length;
+    const tc = filteredAppointments.filter(a => a.status === 'completed').length;
+    const tp = filteredAppointments.filter(a => a.status === 'pending').length;
+    const tapproved = filteredAppointments.filter(a => a.status === 'approved').length;
+    const trejected = filteredAppointments.filter(a => a.status === 'rejected').length;
+    const tv = selectedService === 'all'
+      ? vaccinations.length
+      : vaccinations.filter(v => v.vaccine?.toLowerCase().includes(selectedService.toLowerCase().split(' ')[0])).length;
     const rate = ta ? Math.round((tc / ta) * 100) : 0;
-    return { totalAppointments: ta, totalCompleted: tc, totalVaccinations: tv, completionRate: rate };
-  }, [appointments, vaccinations]);
+    return {
+      totalAppointments: ta, totalCompleted: tc, totalPending: tp,
+      totalApproved: tapproved, totalRejected: trejected,
+      totalVaccinations: tv, completionRate: rate,
+    };
+  }, [filteredAppointments, vaccinations, selectedService]);
 
   /* ── Previous period comparison (shift date range back by same duration) ── */
   const [prevTotals, setPrevTotals] = useState({ totalAppointments: 0, totalCompleted: 0, totalVaccinations: 0 });
@@ -198,10 +225,10 @@ const Reports = () => {
     return Math.round(((curr - prev) / prev) * 100);
   };
 
-  /* ── Service breakdown from real appointments ── */
+  /* ── Service breakdown from filtered appointments ── */
   const serviceBreakdown = useMemo(() => {
     const map = {};
-    appointments.forEach(a => {
+    filteredAppointments.forEach(a => {
       const svc = a.service || 'Other';
       const name = Object.keys(SERVICE_COLORS).find(k => svc.toLowerCase().includes(k.toLowerCase())) || 'Other';
       map[name] = (map[name] || 0) + 1;
@@ -214,7 +241,7 @@ const Reports = () => {
         pct: Math.round((value / total) * 100),
       }))
       .sort((a, b) => b.value - a.value);
-  }, [appointments]);
+  }, [filteredAppointments]);
 
   /* ── Week helper for Excel grouping ── */
   const getWeekLabel = (dateStr) => {
@@ -233,10 +260,12 @@ const Reports = () => {
   const handleExportExcel = () => {
     const wb = XLSX.utils.book_new();
     const today = new Date().toISOString().split('T')[0];
+    const svcLabel = selectedService === 'all' ? 'All Services' : selectedService;
+    const appts = filteredAppointments;
 
     /* --- Sheet 1: Weekly Summary --- */
     const weekMap = {};
-    appointments.forEach(a => {
+    appts.forEach(a => {
       if (!a.date) return;
       const { label } = getWeekLabel(a.date);
       if (!weekMap[label]) weekMap[label] = { week: label, appointments: 0, completed: 0, pending: 0, vaccinations: 0 };
@@ -246,6 +275,7 @@ const Reports = () => {
     });
     vaccinations.forEach(v => {
       if (!v.date) return;
+      if (selectedService !== 'all' && !v.vaccine?.toLowerCase().includes(selectedService.toLowerCase().split(' ')[0])) return;
       const { label } = getWeekLabel(v.date);
       if (!weekMap[label]) weekMap[label] = { week: label, appointments: 0, completed: 0, pending: 0, vaccinations: 0 };
       weekMap[label].vaccinations += 1;
@@ -266,7 +296,7 @@ const Reports = () => {
     XLSX.utils.book_append_sheet(wb, ws1, 'Weekly Summary');
 
     /* --- Sheet 2: All Appointments --- */
-    const apptRows = appointments.map(a => ({
+    const apptRows = appts.map(a => ({
       'Date': a.date || '', 'Time': a.time || '', 'Patient': a.name || '',
       'Service': a.service || '', 'Status': a.status || '',
       'Handled By': a.handled_by || '', 'Notes': a.notes || '',
@@ -277,7 +307,10 @@ const Reports = () => {
     XLSX.utils.book_append_sheet(wb, ws2, 'Appointments');
 
     /* --- Sheet 3: All Vaccinations --- */
-    const vaccRows = vaccinations.map(v => ({
+    const filteredVacc = selectedService === 'all'
+      ? vaccinations
+      : vaccinations.filter(v => v.vaccine?.toLowerCase().includes(selectedService.toLowerCase().split(' ')[0]));
+    const vaccRows = filteredVacc.map(v => ({
       'Date': v.date || '', 'Patient': v.patient || '', 'Vaccine': v.vaccine || '',
       'Dose': v.dose || '', 'Status': v.status || '',
       'Administered By': v.administered_by || '', 'Site': v.site || '', 'Notes': v.notes || '',
@@ -296,7 +329,26 @@ const Reports = () => {
     ws4['!cols'] = [{ wch: 16 }, { wch: 10 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(wb, ws4, 'Service Breakdown');
 
-    XLSX.writeFile(wb, `B-Health-Weekly-Report-${today}.xlsx`);
+    /* --- Sheet 5: Status Summary --- */
+    const statusRows = [
+      { 'Metric': 'Service', 'Value': svcLabel },
+      { 'Metric': 'Date Range', 'Value': dateLabel },
+      { 'Metric': 'Total Appointments', 'Value': totals.totalAppointments },
+      { 'Metric': 'Completed', 'Value': totals.totalCompleted },
+      { 'Metric': 'Pending', 'Value': totals.totalPending },
+      { 'Metric': 'Approved', 'Value': totals.totalApproved },
+      { 'Metric': 'Rejected', 'Value': totals.totalRejected },
+      { 'Metric': 'Vaccinations', 'Value': totals.totalVaccinations },
+      { 'Metric': 'Completion Rate', 'Value': `${totals.completionRate}%` },
+    ];
+    const ws5 = XLSX.utils.json_to_sheet(statusRows);
+    ws5['!cols'] = [{ wch: 22 }, { wch: 28 }];
+    XLSX.utils.book_append_sheet(wb, ws5, 'Status Summary');
+
+    const filename = selectedService === 'all'
+      ? `B-Health-Report-${today}.xlsx`
+      : `B-Health-${svcLabel.replace(/[^a-zA-Z0-9]/g, '')}-Report-${today}.xlsx`;
+    XLSX.writeFile(wb, filename);
   };
 
   /* ── Other export handlers ── */
@@ -339,9 +391,9 @@ const Reports = () => {
       color: '#15803d', change: pctChange(totals.totalCompleted, prevTotals.totalCompleted),
     },
     {
-      label: 'Vaccinations', value: totals.totalVaccinations,
-      icon: <Syringe size={20} />, bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
-      color: '#b45309', change: pctChange(totals.totalVaccinations, prevTotals.totalVaccinations),
+      label: 'Pending', value: totals.totalPending,
+      icon: <FileText size={20} />, bg: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
+      color: '#b45309',
     },
     {
       label: 'Completion Rate', value: `${totals.completionRate}%`,
@@ -352,6 +404,25 @@ const Reports = () => {
         : 0,
     },
   ];
+
+  /* ── Per-service report cards ── */
+  const perServiceStats = useMemo(() => {
+    if (serviceNames.length === 0) return [];
+    return serviceNames.map(svc => {
+      const svcAppts = appointments.filter(a => a.service === svc);
+      const completed = svcAppts.filter(a => a.status === 'completed').length;
+      const pending = svcAppts.filter(a => a.status === 'pending').length;
+      const approved = svcAppts.filter(a => a.status === 'approved').length;
+      const rate = svcAppts.length ? Math.round((completed / svcAppts.length) * 100) : 0;
+      const catKey = Object.keys(SERVICE_COLORS).find(k => svc.toLowerCase().includes(k.toLowerCase())) || 'Other';
+      return {
+        name: svc,
+        total: svcAppts.length,
+        completed, pending, approved, rate,
+        color: SERVICE_COLORS[catKey] || '#a855f7',
+      };
+    }).filter(s => s.total > 0).sort((a, b) => b.total - a.total);
+  }, [appointments, serviceNames]);
 
   const fmtDate = (d, mode) => {
     if (!d) return '...';
@@ -365,10 +436,11 @@ const Reports = () => {
   const recentReports = useMemo(() => {
     const now = new Date();
     const reports = [];
+    const appts = filteredAppointments;
     for (let i = 0; i < 4; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const monthName = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-      const monthAppts = appointments.filter(a => {
+      const monthAppts = appts.filter(a => {
         if (!a.date) return false;
         const ad = new Date(a.date);
         return ad.getMonth() === d.getMonth() && ad.getFullYear() === d.getFullYear();
@@ -376,7 +448,9 @@ const Reports = () => {
       if (monthAppts.length > 0 || i === 0) {
         reports.push({
           id: i + 1,
-          name: `Monthly Summary - ${monthName}`,
+          name: selectedService === 'all'
+            ? `Monthly Summary - ${monthName}`
+            : `${selectedService} - ${monthName}`,
           type: 'Monthly',
           date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`,
           records: monthAppts.length,
@@ -385,7 +459,7 @@ const Reports = () => {
       }
     }
     return reports;
-  }, [appointments]);
+  }, [filteredAppointments, selectedService]);
 
   return (
     <div className="p-4" style={{ backgroundColor: '#f8fafc' }} ref={printRef}>
@@ -396,7 +470,7 @@ const Reports = () => {
             Analytics & Reports
           </h5>
           <p style={{ fontSize: 12, color: '#9ca3af', margin: 0 }}>
-            Health center performance overview &bull; {dateLabel}
+            {selectedService === 'all' ? 'All services' : selectedService} &bull; {dateLabel}
             {loading && <Spinner animation="border" size="sm" className="ms-2" style={{ width: 12, height: 12, borderWidth: 2 }} />}
           </p>
         </div>
@@ -450,7 +524,7 @@ const Reports = () => {
               </div>
             </Col>
 
-            <Col xs={12} md="auto">
+            <Col xs={6} md="auto">
               <div className="d-flex align-items-center gap-1 p-1 rounded-3"
                 style={{ background: 'rgba(255,255,255,0.12)' }}>
                 {['weekly', 'monthly'].map(m => (
@@ -467,6 +541,24 @@ const Reports = () => {
                   </button>
                 ))}
               </div>
+            </Col>
+
+            <Col xs={6} md="auto">
+              <select
+                value={selectedService}
+                onChange={(e) => setSelectedService(e.target.value)}
+                className="border-0 rounded-3 px-3 py-2"
+                style={{
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.15)', color: '#fff',
+                  outline: 'none', backdropFilter: 'blur(10px)',
+                }}
+              >
+                <option value="all" style={{ color: '#0f172a' }}>All Services</option>
+                {serviceNames.map(svc => (
+                  <option key={svc} value={svc} style={{ color: '#0f172a' }}>{svc}</option>
+                ))}
+              </select>
             </Col>
 
             <Col xs={12} md="auto" className="flex-grow-1">
@@ -554,9 +646,11 @@ const Reports = () => {
             <Card.Body className="p-4">
               <div className="d-flex justify-content-between align-items-center mb-3">
                 <div>
-                  <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>Appointments vs Completed</span>
+                  <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>
+                    {selectedService === 'all' ? 'Appointments vs Completed' : `${selectedService} - Appointments vs Completed`}
+                  </span>
                   <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                    {dateMode === 'weekly' ? 'Weekly' : 'Monthly'} comparison &bull; {appointments.length} records
+                    {dateMode === 'weekly' ? 'Weekly' : 'Monthly'} comparison &bull; {filteredAppointments.length} records
                   </div>
                 </div>
                 <div className="d-flex align-items-center gap-2">
@@ -628,7 +722,7 @@ const Reports = () => {
               <div className="d-flex justify-content-between align-items-center mb-3">
                 <div>
                   <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>Service Breakdown</span>
-                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{appointments.length} total appointments</div>
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{filteredAppointments.length} total appointments</div>
                 </div>
                 <button className="border-0 p-1 rounded-2 bg-transparent" onClick={handleExportServices} title="Export">
                   <Download size={14} color="#6b7280" />
@@ -672,7 +766,9 @@ const Reports = () => {
         <Card.Body className="p-4">
           <div className="d-flex justify-content-between align-items-center mb-3">
             <div>
-              <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>Vaccination Trend</span>
+              <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>
+                {selectedService === 'all' ? 'Vaccination Trend' : `${selectedService} - Vaccination Trend`}
+              </span>
               <div style={{ fontSize: 11, color: '#9ca3af' }}>{dateMode === 'weekly' ? 'Weekly' : 'Monthly'} vaccination count</div>
             </div>
             <Badge pill style={{ background: '#fef3c7', color: '#b45309', fontWeight: 600, fontSize: 11, padding: '6px 12px' }}>
@@ -699,6 +795,87 @@ const Reports = () => {
                 <Area type="monotone" dataKey="vaccinations" stroke="#f59e0b" strokeWidth={2.5} fill="url(#gVacc)" dot={{ r: 3, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }} />
               </AreaChart>
             </ResponsiveContainer>
+          )}
+        </Card.Body>
+      </Card>
+
+      {/* ── Per-Service Report Cards ── */}
+      <Card className="border-0 rounded-4 mb-4 bh-fade-up"
+        style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)', animationDelay: '0.18s' }}>
+        <Card.Body className="p-4">
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>Service Reports</span>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                {perServiceStats.length} services &bull; Click a service to generate its individual report
+              </div>
+            </div>
+            <Badge pill style={{ background: '#eff6ff', color: '#1d4ed8', fontWeight: 600, fontSize: 11, padding: '6px 12px' }}>
+              {perServiceStats.reduce((s, r) => s + r.total, 0)} total appointments
+            </Badge>
+          </div>
+          {perServiceStats.length === 0 ? (
+            <div className="d-flex align-items-center justify-content-center" style={{ height: 120, color: '#9ca3af', fontSize: 13 }}>
+              No service data available for this period
+            </div>
+          ) : (
+            <Row className="g-3">
+              {perServiceStats.map((svc) => (
+                <Col key={svc.name} xs={12} md={6} lg={4}>
+                  <div
+                    onClick={() => setSelectedService(svc.name)}
+                    className="p-3 rounded-4 h-100"
+                    style={{
+                      cursor: 'pointer', transition: 'all 0.2s',
+                      border: selectedService === svc.name ? `2px solid ${svc.color}` : '1px solid #e5e7eb',
+                      background: selectedService === svc.name ? `${svc.color}08` : '#fff',
+                    }}
+                    onMouseEnter={(e) => { if (selectedService !== svc.name) e.currentTarget.style.borderColor = svc.color + '88'; }}
+                    onMouseLeave={(e) => { if (selectedService !== svc.name) e.currentTarget.style.borderColor = '#e5e7eb'; }}
+                  >
+                    <div className="d-flex align-items-center justify-content-between mb-2">
+                      <div className="d-flex align-items-center gap-2">
+                        <div className="d-flex align-items-center justify-content-center rounded-3"
+                          style={{ width: 32, height: 32, background: `${svc.color}15`, color: svc.color }}>
+                          <Activity size={15} />
+                        </div>
+                        <span className="fw-bold" style={{ fontSize: 13, color: '#111827' }}>{svc.name}</span>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedService(svc.name); handleExportExcel(); }}
+                        className="border-0 rounded-2 px-2 py-1 d-flex align-items-center gap-1"
+                        style={{ background: `${svc.color}12`, color: svc.color, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                        title={`Export ${svc.name} report`}
+                      >
+                        <FileSpreadsheet size={12} /> Export
+                      </button>
+                    </div>
+                    <div className="d-flex align-items-center gap-3 mb-2" style={{ fontSize: 11 }}>
+                      <span style={{ color: '#6b7280' }}>
+                        <strong style={{ color: svc.color, fontSize: 18 }}>{svc.total}</strong> total
+                      </span>
+                      <span style={{ color: '#16a34a' }}>
+                        <CheckCircle2 size={11} className="me-1" />{svc.completed}
+                      </span>
+                      <span style={{ color: '#b45309' }}>
+                        <FileText size={11} className="me-1" />{svc.pending}
+                      </span>
+                    </div>
+                    <div style={{ height: 6, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{
+                        width: `${svc.rate}%`, height: '100%',
+                        background: `linear-gradient(90deg, ${svc.color}, ${svc.color}cc)`,
+                        borderRadius: 3, transition: 'width 0.6s ease',
+                      }} />
+                    </div>
+                    <div className="d-flex justify-content-between mt-1" style={{ fontSize: 10, color: '#9ca3af' }}>
+                      <span>Completion Rate</span>
+                      <span style={{ fontWeight: 600, color: svc.color }}>{svc.rate}%</span>
+                    </div>
+                  </div>
+                </Col>
+              ))}
+            </Row>
           )}
         </Card.Body>
       </Card>
@@ -782,6 +959,7 @@ const Reports = () => {
               <CheckCircle2 size={16} color="#16a34a" />
               <span style={{ color: '#166534', fontWeight: 500 }}>
                 Report generated for <strong>{dateLabel}</strong> ({dateMode} mode)
+                {selectedService !== 'all' && <span> &bull; Service: <strong>{selectedService}</strong></span>}
               </span>
             </div>
           </div>
@@ -798,7 +976,7 @@ const Reports = () => {
             ))}
           </Row>
           <div style={{ fontSize: 12, color: '#6b7280' }}>
-            Data sourced from {appointments.length} appointments and {vaccinations.length} vaccinations in the selected period.
+            Data sourced from {filteredAppointments.length} appointments and {totals.totalVaccinations} vaccinations in the selected period.
           </div>
         </Modal.Body>
         <Modal.Footer style={{ border: 'none' }}>
