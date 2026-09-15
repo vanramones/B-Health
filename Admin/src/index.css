@@ -292,6 +292,23 @@ p {
   background: rgba(255, 255, 255, 0.2) !important;
   box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1) !important;
 }
+/* DatePicker inside modals (light background) */
+.modal .bh-dp-wrapper .bh-dp-input {
+  background: #fff !important;
+  color: #374151 !important;
+  border: 1px solid #d1d5db !important;
+}
+.modal .bh-dp-wrapper .bh-dp-input::placeholder {
+  color: #9ca3af !important;
+}
+.modal .bh-dp-wrapper .bh-dp-input:focus {
+  border-color: #3b82f6 !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+}
+.modal .react-datepicker__close-icon::after {
+  background-color: #9ca3af !important;
+}
 
 /* ===== React DatePicker Popup ===== */
 .react-datepicker-wrapper {
