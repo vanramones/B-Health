@@ -339,19 +339,34 @@ const UserAppointments = () => {
                         <Clock size={14} color="#6b7280" />{apt.time}
                       </div>
                     </div>
-                    {/* Reschedule indicator */}
-                    {isRescheduled(apt) && apt.status === 'pending' && (
+                    {/* Reschedule indicator - show for all statuses */}
+                    {isRescheduled(apt) && (
                       <div className="p-2 rounded-3 mb-2 d-flex align-items-center gap-2"
-                        style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a', fontSize: 12, color: '#92400e' }}>
+                        style={{
+                          backgroundColor: apt.status === 'pending' ? '#fffbeb' : '#f0fdf4',
+                          border: `1px solid ${apt.status === 'pending' ? '#fde68a' : '#bbf7d0'}`,
+                          fontSize: 12,
+                          color: apt.status === 'pending' ? '#92400e' : '#166534',
+                        }}>
                         <CalendarClock size={14} />
-                        <span>This appointment was <strong>rescheduled</strong> by admin</span>
+                        <span>
+                          {apt.status === 'pending'
+                            ? <>This appointment was <strong>rescheduled</strong> by admin</>
+                            : <>Reschedule <strong>accepted</strong></>}
+                        </span>
                       </div>
                     )}
-                    {apt.notes && !isRescheduled(apt) && (
-                      <div className="p-2 rounded-2" style={{ backgroundColor: '#f9fafb', fontSize: 12, color: '#6b7280' }}>
-                        {apt.notes}
-                      </div>
-                    )}
+                    {/* Show clean notes (filter out [RESCHEDULED...] and [NOTE from...] prefixes) */}
+                    {apt.notes && (() => {
+                      const cleanNotes = apt.notes.split('\n\n')
+                        .filter(b => !b.startsWith('[RESCHEDULED') && !b.startsWith('[NOTE from'))
+                        .join('\n').trim();
+                      return cleanNotes ? (
+                        <div className="p-2 rounded-2" style={{ backgroundColor: '#f9fafb', fontSize: 12, color: '#6b7280' }}>
+                          {cleanNotes}
+                        </div>
+                      ) : null;
+                    })()}
                     <div className="mt-3 d-flex flex-column gap-2" onClick={(e) => e.stopPropagation()}>
                       {/* Accept Reschedule button */}
                       {isRescheduled(apt) && apt.status === 'pending' && (
@@ -450,7 +465,7 @@ const UserAppointments = () => {
                 </div>
 
                 {/* Reschedule notice */}
-                {isRescheduled(viewApt) && viewApt.status === 'pending' && (
+                {isRescheduled(viewApt) && (
                   <div style={{
                     padding: '12px 16px', borderRadius: 12, marginBottom: 12,
                     background: '#fffbeb', border: '1px solid #fde68a',
@@ -458,11 +473,13 @@ const UserAppointments = () => {
                   }}>
                     <CalendarClock size={20} color="#d97706" style={{ flexShrink: 0, marginTop: 2 }} />
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>
-                        Appointment Rescheduled by Admin
+                      <div style={{ fontSize: 13, fontWeight: 700, color: viewApt.status === 'pending' ? '#92400e' : '#166534', marginBottom: 4 }}>
+                        {viewApt.status === 'pending' ? 'Appointment Rescheduled by Admin' : 'Reschedule Accepted'}
                       </div>
                       <div style={{ fontSize: 12, color: '#78716c', lineHeight: 1.5 }}>
-                        The admin has rescheduled this appointment to a new date/time. Please review and accept the new schedule, or send a note if you're not available.
+                        {viewApt.status === 'pending'
+                          ? 'The admin has rescheduled this appointment to a new date/time. Please review and accept the new schedule, or send a note if you\'re not available.'
+                          : 'You have accepted the rescheduled appointment.'}
                       </div>
                     </div>
                   </div>
@@ -488,11 +505,16 @@ const UserAppointments = () => {
                       label: 'Patient Name',
                       value: viewApt.name,
                     },
-                    viewApt.notes && !isRescheduled(viewApt) && {
-                      icon: <FileText size={18} color="#f59e0b" />,
-                      label: 'Notes / Remarks',
-                      value: viewApt.notes,
-                    },
+                    viewApt.notes && (() => {
+                      const clean = viewApt.notes.split('\n\n')
+                        .filter(b => !b.startsWith('[RESCHEDULED') && !b.startsWith('[NOTE from'))
+                        .join('\n').trim();
+                      return clean ? {
+                        icon: <FileText size={18} color="#f59e0b" />,
+                        label: 'Notes / Remarks',
+                        value: clean,
+                      } : null;
+                    })(),
                     viewApt.status !== 'pending' && {
                       icon: <User size={18} color="#7c3aed" />,
                       label: viewApt.status === 'rejected' ? 'Rejected By' : viewApt.status === 'completed' ? 'Completed By' : 'Approved By',
