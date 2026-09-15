@@ -311,8 +311,17 @@ p {
 .react-datepicker__portal {
   z-index: 99999 !important;
 }
-.modal .react-datepicker-popper {
+.modal .react-datepicker-popper,
+.modal-datepicker-popper {
   z-index: 99999 !important;
+  position: fixed !important;
+}
+/* Prevent modal from clipping calendar */
+.modal-body {
+  overflow: visible !important;
+}
+.modal-content {
+  overflow: visible !important;
 }
 .react-datepicker {
   font-family: 'Inter', system-ui, -apple-system, sans-serif !important;

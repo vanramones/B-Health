@@ -1527,7 +1527,18 @@ const Reports = () => {
                     placeholderText="Select date range"
                     monthsShown={svcDateMode === 'weekly' ? 2 : 1}
                     isClearable
-                    withPortal
+                    popperPlacement="bottom-start"
+                    popperClassName="modal-datepicker-popper"
+                    popperModifiers={[
+                      {
+                        name: 'preventOverflow',
+                        options: {
+                          rootBoundary: 'viewport',
+                          tether: false,
+                          altAxis: true,
+                        },
+                      },
+                    ]}
                   />
                 </div>
               </Col>
@@ -1713,7 +1724,18 @@ const Reports = () => {
                     placeholderText="Select date range"
                     monthsShown={rptDateMode === 'weekly' ? 2 : 1}
                     isClearable
-                    withPortal
+                    popperPlacement="bottom-start"
+                    popperClassName="modal-datepicker-popper"
+                    popperModifiers={[
+                      {
+                        name: 'preventOverflow',
+                        options: {
+                          rootBoundary: 'viewport',
+                          tether: false,
+                          altAxis: true,
+                        },
+                      },
+                    ]}
                   />
                 </div>
               </Col>
