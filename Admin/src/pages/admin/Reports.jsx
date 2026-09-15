@@ -1152,7 +1152,7 @@ const Reports = () => {
             </Col>
 
             <Col xs={12} md="auto" className="flex-grow-1">
-              <div className="bh-dp-wrapper">
+              <div className="bh-dp-wrapper bh-dp-main">
                 <DatePicker
                   selected={startDate}
                   onChange={(dates) => { const [s, e] = dates; setStartDate(s); setEndDate(e); }}
@@ -1574,7 +1574,7 @@ const Reports = () => {
               <div style={{ fontSize: 11, color: '#9ca3af' }}>{recentReports.length} reports available for download</div>
             </div>
           </div>
-          <div className="table-responsive-wrapper">
+          <div className="table-responsive">
             <Table hover className="mb-0 align-middle">
               <thead style={{ backgroundColor: '#f9fafb' }}>
                 <tr style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -1630,7 +1630,7 @@ const Reports = () => {
       </Card>
 
       {/* ── Preview Modal ── */}
-      <Modal show={showPreview} onHide={() => setShowPreview(false)} centered size="lg">
+      <Modal show={showPreview} onHide={() => setShowPreview(false)} centered size="lg" fullscreen="md-down">
         <Modal.Header closeButton style={{ border: 'none', paddingBottom: 0 }}>
           <Modal.Title style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>Report Preview</Modal.Title>
         </Modal.Header>
@@ -1681,7 +1681,7 @@ const Reports = () => {
       </Modal>
 
       {/* ── Per-Service Report Modal with Calendar ── */}
-      <Modal show={!!svcModal} onHide={() => setSvcModal(null)} centered size="lg">
+      <Modal show={!!svcModal} onHide={() => setSvcModal(null)} centered size="lg" fullscreen="md-down">
         <Modal.Header closeButton style={{ borderBottom: '1px solid #f1f5f9' }}>
           <div className="d-flex align-items-center gap-2">
             {svcModal && (
@@ -1810,14 +1810,14 @@ const Reports = () => {
               <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
                 Recent Appointments ({svcReportData.appointments.length})
               </div>
-              <div className="table-responsive-wrapper" style={{ maxHeight: 200, overflowY: 'auto' }}>
+              <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
                 <Table hover size="sm" className="mb-0 align-middle">
                   <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
                     <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
                       <th className="px-3 py-2">Date</th>
                       <th className="py-2">Patient</th>
                       <th className="py-2">Status</th>
-                      <th className="py-2">Handled By</th>
+                      <th className="py-2 d-none d-sm-table-cell">Handled By</th>
                     </tr>
                   </thead>
                   <tbody style={{ fontSize: 12 }}>
@@ -1826,7 +1826,7 @@ const Reports = () => {
                         <td className="px-3 py-2" style={{ color: '#6b7280' }}>{a.date}</td>
                         <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{a.name}</td>
                         <td className="py-2"><StatusBadge status={a.status} /></td>
-                        <td className="py-2" style={{ color: '#6b7280' }}>{a.handled_by || '-'}</td>
+                        <td className="py-2 d-none d-sm-table-cell" style={{ color: '#6b7280' }}>{a.handled_by || '-'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1861,7 +1861,7 @@ const Reports = () => {
       </Modal>
 
       {/* ── Separate Report Modal (Overall / Appointments / Health Records) ── */}
-      <Modal show={!!reportModal} onHide={() => setReportModal(null)} centered size="lg">
+      <Modal show={!!reportModal} onHide={() => setReportModal(null)} centered size="lg" fullscreen="md-down">
         <Modal.Header closeButton style={{ borderBottom: '1px solid #f1f5f9' }}>
           <div className="d-flex align-items-center gap-2">
             <div className="d-flex align-items-center justify-content-center rounded-3"
@@ -1979,7 +1979,7 @@ const Reports = () => {
                   <Row className="g-3">
                     <Col xs={12} md={6}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Recent Appointments</div>
-                      <div className="table-responsive-wrapper" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
                         <Table hover size="sm" className="mb-0 align-middle">
                           <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
                             <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
@@ -2000,7 +2000,7 @@ const Reports = () => {
                     </Col>
                     <Col xs={12} md={6}>
                       <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Recent Health Records</div>
-                      <div className="table-responsive-wrapper" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                      <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
                         <Table hover size="sm" className="mb-0 align-middle">
                           <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
                             <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
@@ -2077,7 +2077,7 @@ const Reports = () => {
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
                     All Appointments ({rptData.appointments.length})
                   </div>
-                  <div className="table-responsive-wrapper" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
                     <Table hover size="sm" className="mb-0 align-middle">
                       <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
                         <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
@@ -2155,7 +2155,7 @@ const Reports = () => {
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
                     All Health Records ({rptData.healthRecords.length})
                   </div>
-                  <div className="table-responsive-wrapper" style={{ maxHeight: 200, overflowY: 'auto' }}>
+                  <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
                     <Table hover size="sm" className="mb-0 align-middle">
                       <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
                         <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>

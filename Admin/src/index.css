@@ -338,6 +338,13 @@ p {
 .react-datepicker-wrapper {
   display: inline-block;
 }
+@media (max-width: 767.98px) {
+  .bh-dp-main .react-datepicker-wrapper,
+  .bh-dp-modal .react-datepicker-wrapper {
+    display: block !important;
+    width: 100% !important;
+  }
+}
 .react-datepicker-popper {
   z-index: 9999 !important;
 }
@@ -481,6 +488,152 @@ p {
   color: #9ca3af !important;
   font-weight: 600 !important;
   font-size: 10px !important;
+}
+
+/* ===== Responsive Calendar & Reports ===== */
+
+/* Calendar popup responsive */
+@media (max-width: 767.98px) {
+  /* Make calendar popup full width on mobile */
+  .react-datepicker {
+    width: calc(100vw - 40px) !important;
+    max-width: 340px !important;
+  }
+  .react-datepicker__month-container {
+    width: 100% !important;
+  }
+  /* Single month on mobile even if monthsShown=2 */
+  .react-datepicker__month-container + .react-datepicker__month-container {
+    display: none !important;
+  }
+  /* Smaller day cells */
+  .react-datepicker__day,
+  .react-datepicker__day-name {
+    width: 2rem !important;
+    line-height: 2rem !important;
+    margin: 1px !important;
+    font-size: 12px !important;
+  }
+  .react-datepicker__month-text,
+  .react-datepicker__quarter-text {
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+  }
+  .react-datepicker__header {
+    padding: 10px 10px 6px !important;
+  }
+  .react-datepicker__current-month {
+    font-size: 13px !important;
+  }
+
+  /* Date range input full width */
+  .bh-dp-wrapper .bh-dp-input,
+  .bh-dp-wrapper .bh-dp-input.bh-dp-range {
+    width: 100% !important;
+    font-size: 12px !important;
+  }
+  .bh-dp-modal-input {
+    width: 100% !important;
+    font-size: 12px !important;
+  }
+
+  /* Report date card stacking */
+  .bh-report-date-card .row {
+    gap: 8px !important;
+  }
+
+  /* Modal calendar wrapper full width */
+  .bh-dp-modal {
+    width: 100% !important;
+  }
+  .bh-dp-modal .react-datepicker-wrapper {
+    width: 100% !important;
+    display: block !important;
+  }
+
+  /* Calendar popper on mobile - center it */
+  .bh-dp-modal .react-datepicker-popper {
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    width: calc(100vw - 60px) !important;
+    max-width: 320px !important;
+  }
+}
+
+@media (max-width: 575.98px) {
+  /* Even smaller on very small screens */
+  .react-datepicker {
+    max-width: 300px !important;
+  }
+  .react-datepicker__day,
+  .react-datepicker__day-name {
+    width: 1.8rem !important;
+    line-height: 1.8rem !important;
+    font-size: 11px !important;
+  }
+  .react-datepicker__week-number {
+    font-size: 9px !important;
+    width: 1.5rem !important;
+  }
+  .react-datepicker__month-text {
+    padding: 5px 6px !important;
+    font-size: 11px !important;
+  }
+
+  /* Report cards stack on small */
+  .bh-report-date-card .card-body {
+    padding: 12px !important;
+  }
+
+  /* Generate/Print buttons stack */
+  .bh-report-date-card .d-flex.align-items-center.gap-2 {
+    flex-wrap: wrap !important;
+  }
+
+  /* Service selector full width */
+  .bh-report-date-card select {
+    width: 100% !important;
+  }
+}
+
+/* Modal responsive */
+@media (max-width: 767.98px) {
+  .modal-lg {
+    max-width: calc(100% - 20px) !important;
+    margin: 10px auto !important;
+  }
+  .modal-body {
+    padding: 12px !important;
+  }
+  .modal .table th,
+  .modal .table td {
+    font-size: 10px !important;
+    padding: 4px 6px !important;
+    white-space: nowrap !important;
+  }
+  .modal-footer {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  .modal-footer .btn {
+    flex: 1 1 auto !important;
+    min-width: 80px !important;
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+  }
+  .modal-header .modal-title {
+    font-size: 14px !important;
+  }
+}
+
+/* Report stat cards responsive */
+@media (max-width: 575.98px) {
+  .bh-stagger .card-body {
+    padding: 10px !important;
+  }
+  .bh-stagger .fw-bold[style*="font-size: 30"] {
+    font-size: 22px !important;
+  }
 }
 
 /* ===== Print Styles ===== */
