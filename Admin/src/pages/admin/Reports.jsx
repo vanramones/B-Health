@@ -960,7 +960,7 @@ const Reports = () => {
                   placeholderText="Select date range"
                   monthsShown={dateMode === 'weekly' ? 2 : 1}
                   isClearable
-                  portalId="datepicker-portal"
+                  withPortal
                 />
               </div>
             </Col>
@@ -1423,9 +1423,6 @@ const Reports = () => {
         </Card.Body>
       </Card>
 
-      {/* ── DatePicker Portal ── */}
-      <div id="datepicker-portal" />
-
       {/* ── Preview Modal ── */}
       <Modal show={showPreview} onHide={() => setShowPreview(false)} centered size="lg">
         <Modal.Header closeButton style={{ border: 'none', paddingBottom: 0 }}>
@@ -1530,7 +1527,7 @@ const Reports = () => {
                     placeholderText="Select date range"
                     monthsShown={svcDateMode === 'weekly' ? 2 : 1}
                     isClearable
-                    portalId="datepicker-portal"
+                    withPortal
                   />
                 </div>
               </Col>
@@ -1716,7 +1713,7 @@ const Reports = () => {
                     placeholderText="Select date range"
                     monthsShown={rptDateMode === 'weekly' ? 2 : 1}
                     isClearable
-                    portalId="datepicker-portal"
+                    withPortal
                   />
                 </div>
               </Col>

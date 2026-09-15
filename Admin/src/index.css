@@ -307,6 +307,13 @@ p {
 #datepicker-portal .react-datepicker-popper {
   z-index: 9999 !important;
 }
+/* Calendar portal inside Bootstrap modals */
+.react-datepicker__portal {
+  z-index: 99999 !important;
+}
+.modal .react-datepicker-popper {
+  z-index: 99999 !important;
+}
 .react-datepicker {
   font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
   border: none !important;
