@@ -21,7 +21,7 @@ const statusConfig = {
   rejected:  { bg: '#fee2e2', color: '#dc2626', label: 'Rejected',  icon: <XCircle size={14} /> },
 };
 
-const isRescheduled = (apt) => apt.notes && apt.notes.includes('[RESCHEDULED');
+const isRescheduled = (apt) => apt.notes && /\bRESCHEDULED\b/i.test(apt.notes);
 
 const SLOT_LIMIT = 5;
 const emptyForm = { service: '', date: '', time: '', notes: '', phone: '' };
@@ -489,9 +489,11 @@ const UserAppointments = () => {
                       label: 'Patient Name',
                       value: viewApt.name,
                     },
-                    viewApt.notes && !isRescheduled(viewApt) && {
-                      icon: <FileText size={18} color="#f59e0b" />,
-                      label: 'Notes / Remarks',
+                    viewApt.notes && {
+                      icon: isRescheduled(viewApt)
+                        ? <CalendarClock size={18} color="#d97706" />
+                        : <FileText size={18} color="#f59e0b" />,
+                      label: isRescheduled(viewApt) ? 'Reschedule History' : 'Notes / Remarks',
                       value: viewApt.notes,
                     },
                     viewApt.status !== 'pending' && {
