@@ -339,34 +339,19 @@ const UserAppointments = () => {
                         <Clock size={14} color="#6b7280" />{apt.time}
                       </div>
                     </div>
-                    {/* Reschedule indicator - show for all statuses */}
+                    {/* Reschedule indicator */}
                     {isRescheduled(apt) && (
                       <div className="p-2 rounded-3 mb-2 d-flex align-items-center gap-2"
-                        style={{
-                          backgroundColor: apt.status === 'pending' ? '#fffbeb' : '#f0fdf4',
-                          border: `1px solid ${apt.status === 'pending' ? '#fde68a' : '#bbf7d0'}`,
-                          fontSize: 12,
-                          color: apt.status === 'pending' ? '#92400e' : '#166534',
-                        }}>
+                        style={{ backgroundColor: apt.status === 'pending' ? '#fffbeb' : '#f0fdf4', border: `1px solid ${apt.status === 'pending' ? '#fde68a' : '#86efac'}`, fontSize: 12, color: apt.status === 'pending' ? '#92400e' : '#166534' }}>
                         <CalendarClock size={14} />
-                        <span>
-                          {apt.status === 'pending'
-                            ? <>This appointment was <strong>rescheduled</strong> by admin</>
-                            : <>Reschedule <strong>accepted</strong></>}
-                        </span>
+                        <span>This appointment was <strong>rescheduled</strong> by admin{apt.status !== 'pending' ? ' (accepted)' : ''}</span>
                       </div>
                     )}
-                    {/* Show clean notes (filter out [RESCHEDULED...] and [NOTE from...] prefixes) */}
-                    {apt.notes && (() => {
-                      const cleanNotes = apt.notes.split('\n\n')
-                        .filter(b => !b.startsWith('[RESCHEDULED') && !b.startsWith('[NOTE from'))
-                        .join('\n').trim();
-                      return cleanNotes ? (
-                        <div className="p-2 rounded-2" style={{ backgroundColor: '#f9fafb', fontSize: 12, color: '#6b7280' }}>
-                          {cleanNotes}
-                        </div>
-                      ) : null;
-                    })()}
+                    {apt.notes && !isRescheduled(apt) && (
+                      <div className="p-2 rounded-2" style={{ backgroundColor: '#f9fafb', fontSize: 12, color: '#6b7280' }}>
+                        {apt.notes}
+                      </div>
+                    )}
                     <div className="mt-3 d-flex flex-column gap-2" onClick={(e) => e.stopPropagation()}>
                       {/* Accept Reschedule button */}
                       {isRescheduled(apt) && apt.status === 'pending' && (
@@ -377,14 +362,12 @@ const UserAppointments = () => {
                           {accepting === apt.id ? 'Accepting...' : <><CheckCircle size={14} /> Accept Reschedule</>}
                         </Button>
                       )}
-                      {/* Send Note button */}
-                      {['pending', 'approved'].includes(apt.status) && (
-                        <Button size="sm" variant="outline-primary" className="w-100 d-flex align-items-center justify-content-center gap-1"
-                          style={{ fontSize: 12, fontWeight: 600 }}
-                          onClick={() => { setShowNoteModal(apt); setNoteText(''); setNoteSuccess(''); }}>
-                          <MessageSquare size={14} /> Send Note to Admin
-                        </Button>
-                      )}
+                      {/* Send Note button - available for ALL statuses */}
+                      <Button size="sm" variant="outline-primary" className="w-100 d-flex align-items-center justify-content-center gap-1"
+                        style={{ fontSize: 12, fontWeight: 600 }}
+                        onClick={() => { setShowNoteModal(apt); setNoteText(''); setNoteSuccess(''); }}>
+                        <MessageSquare size={14} /> Send Note to Admin
+                      </Button>
                       {/* Cancel button */}
                       {apt.status === 'pending' && !isRescheduled(apt) && (
                         <Button size="sm" variant="light" className="w-100 border"
@@ -468,18 +451,19 @@ const UserAppointments = () => {
                 {isRescheduled(viewApt) && (
                   <div style={{
                     padding: '12px 16px', borderRadius: 12, marginBottom: 12,
-                    background: '#fffbeb', border: '1px solid #fde68a',
+                    background: viewApt.status === 'pending' ? '#fffbeb' : '#f0fdf4',
+                    border: `1px solid ${viewApt.status === 'pending' ? '#fde68a' : '#86efac'}`,
                     display: 'flex', alignItems: 'flex-start', gap: 10,
                   }}>
-                    <CalendarClock size={20} color="#d97706" style={{ flexShrink: 0, marginTop: 2 }} />
+                    <CalendarClock size={20} color={viewApt.status === 'pending' ? '#d97706' : '#16a34a'} style={{ flexShrink: 0, marginTop: 2 }} />
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: viewApt.status === 'pending' ? '#92400e' : '#166534', marginBottom: 4 }}>
-                        {viewApt.status === 'pending' ? 'Appointment Rescheduled by Admin' : 'Reschedule Accepted'}
+                        Appointment Rescheduled by Admin
                       </div>
                       <div style={{ fontSize: 12, color: '#78716c', lineHeight: 1.5 }}>
                         {viewApt.status === 'pending'
                           ? 'The admin has rescheduled this appointment to a new date/time. Please review and accept the new schedule, or send a note if you\'re not available.'
-                          : 'You have accepted the rescheduled appointment.'}
+                          : 'This appointment was rescheduled by admin and has been processed.'}
                       </div>
                     </div>
                   </div>
@@ -505,16 +489,11 @@ const UserAppointments = () => {
                       label: 'Patient Name',
                       value: viewApt.name,
                     },
-                    viewApt.notes && (() => {
-                      const clean = viewApt.notes.split('\n\n')
-                        .filter(b => !b.startsWith('[RESCHEDULED') && !b.startsWith('[NOTE from'))
-                        .join('\n').trim();
-                      return clean ? {
-                        icon: <FileText size={18} color="#f59e0b" />,
-                        label: 'Notes / Remarks',
-                        value: clean,
-                      } : null;
-                    })(),
+                    viewApt.notes && !isRescheduled(viewApt) && {
+                      icon: <FileText size={18} color="#f59e0b" />,
+                      label: 'Notes / Remarks',
+                      value: viewApt.notes,
+                    },
                     viewApt.status !== 'pending' && {
                       icon: <User size={18} color="#7c3aed" />,
                       label: viewApt.status === 'rejected' ? 'Rejected By' : viewApt.status === 'completed' ? 'Completed By' : 'Approved By',
@@ -559,16 +538,14 @@ const UserAppointments = () => {
                     {accepting === viewApt.id ? 'Accepting…' : <><CheckCircle size={14} /> Accept Reschedule</>}
                   </Button>
                 )}
-                {/* Send Note button in modal */}
-                {['pending', 'approved'].includes(viewApt.status) && (
-                  <Button
-                    size="sm" variant="outline-primary" className="flex-fill d-flex align-items-center justify-content-center gap-1"
-                    style={{ fontSize: 13, fontWeight: 600 }}
-                    onClick={() => { setShowNoteModal(viewApt); setNoteText(''); setNoteSuccess(''); setViewApt(null); }}
-                  >
-                    <MessageSquare size={14} /> Send Note
-                  </Button>
-                )}
+                {/* Send Note button in modal - always available */}
+                <Button
+                  size="sm" variant="outline-primary" className="flex-fill d-flex align-items-center justify-content-center gap-1"
+                  style={{ fontSize: 13, fontWeight: 600 }}
+                  onClick={() => { setShowNoteModal(viewApt); setNoteText(''); setNoteSuccess(''); setViewApt(null); }}
+                >
+                  <MessageSquare size={14} /> Send Note
+                </Button>
                 {viewApt.status === 'pending' && !isRescheduled(viewApt) && (
                   <Button
                     size="sm" variant="light" className="border flex-fill"
