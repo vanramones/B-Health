@@ -3,6 +3,7 @@
 // Mirrors the old Express endpoints so existing pages need no changes.
 // ============================================================================
 import { supabase } from '../config/supabase';
+import { capacityMap, slotCapacity, availability } from '../utils/timeSlots';
 
 const fail = (message, status = 500) => {
   const e = new Error(message);
@@ -24,7 +25,7 @@ const TABLES = {
   appointments:         { table: 'appointments',       cols: ['resident_id','user_id','name','service','date','time','notes','status','handled_by'], search: ['name','service'] },
   'health-records':     { table: 'health_records',     cols: ['resident_id','patient','type','diagnosis','doctor','date','notes','prescription','status'], search: ['patient','diagnosis','doctor','notes'] },
   vaccinations:         { table: 'vaccinations',       cols: ['resident_id','user_id','patient','age','vaccine','dose','date','next_due','administered_by','site','status','notes','reminder_time'], search: ['patient','vaccine','administered_by'] },
-  services:             { table: 'services',           cols: ['name','category','icon','accent','description','beneficiaries','schedule','location','staff','slots_per_hour','is_active'], search: ['name','category','description'] },
+  services:             { table: 'services',           cols: ['name','category','icon','accent','description','beneficiaries','schedule','location','staff','slots_per_hour','slot_schedule','is_active'], search: ['name','category','description'] },
   announcements:        { table: 'announcements',      cols: ['title','category','body','author','audience','publish_date','event_date','status','pinned','image_url'], search: ['title','body','author'] },
   'emergency-contacts': { table: 'emergency_contacts', cols: ['name','category','phone','alt_phone','email','address','available','is_active','is_favorite','notes'], search: ['name','category','phone'] },
   notifications:        { table: 'notifications',      cols: ['type','priority','title','message','recipient','is_read'], search: ['title','message','recipient'] },
@@ -94,11 +95,10 @@ async function softDelete(cfg, id) {
   return { ok: true };
 }
 
-const DEFAULT_SLOT_LIMIT = 5;
-async function serviceLimit(name) {
-  if (!name) return DEFAULT_SLOT_LIMIT;
-  const { data } = await supabase.from('services').select('slots_per_hour').eq('name', name).is('deleted_at', null).limit(1);
-  return data && data[0] && data[0].slots_per_hour > 0 ? data[0].slots_per_hour : DEFAULT_SLOT_LIMIT;
+async function findService(name) {
+  if (!name) return null;
+  const { data } = await supabase.from('services').select('*').eq('name', name).is('deleted_at', null).limit(1);
+  return (data && data[0]) || null;
 }
 
 // ── RPC auth helper ──
@@ -233,17 +233,29 @@ async function route(method, rawPath, body = {}) {
     const uid = u ? u.id : -1;
     const fullName = u ? (u.full_name || '') : '';
 
+    if (seg[1] === 'availability' && method === 'GET') {
+      if (!params.date) throw fail('date is required.', 400);
+      const [{ data: svcs, error: e1 }, { data: appts, error: e2 }] = await Promise.all([
+        supabase.from('services').select('*').is('deleted_at', null),
+        supabase.from('appointments').select('service,time,status,deleted_at')
+          .eq('date', params.date).is('deleted_at', null).not('status', 'in', '("cancelled","rejected")'),
+      ]);
+      throwIf(e1); throwIf(e2);
+      return Object.fromEntries((svcs || []).map((s) => [s.name, availability(s, appts)]));
+    }
+
     if (seg[1] === 'appointments') {
       if (seg[2] === 'slots' && method === 'GET') {
         if (!params.date) throw fail('date is required.', 400);
-        const limit = await serviceLimit(params.service);
+        const svc = await findService(params.service);
+        const limits = capacityMap(svc);
         const { data, error } = await supabase.from('appointments').select('time')
           .eq('date', params.date).eq('service', params.service || '').is('deleted_at', null)
           .not('status', 'in', '("cancelled","rejected")');
         throwIf(error);
         const slots = {};
         (data || []).forEach((r) => { slots[r.time] = (slots[r.time] || 0) + 1; });
-        return { limit, slots };
+        return { limit: slotCapacity(svc, ''), limits, slots };
       }
       if (seg[2] === 'notifications' && method === 'GET') {
         const { data, error } = await supabase.from('appointments')
@@ -263,7 +275,8 @@ async function route(method, rawPath, body = {}) {
       }
       if (!seg[2] && method === 'POST') {
         if (!body.service || !body.date || !body.time) throw fail('Service, date, and time are required.', 400);
-        const limit = await serviceLimit(body.service);
+        const limit = slotCapacity(await findService(body.service), body.time);
+        if (limit <= 0) throw fail('This time is not available for this service. Please choose another time.', 409);
         const { data: taken, error: e1 } = await supabase.from('appointments').select('id')
           .eq('date', body.date).eq('time', body.time).eq('service', body.service).is('deleted_at', null)
           .not('status', 'in', '("cancelled","rejected")');
@@ -284,6 +297,40 @@ async function route(method, rawPath, body = {}) {
         if (data[0].status !== 'pending') throw fail('Only pending appointments can be cancelled.', 400);
         const { error } = await supabase.from('appointments').delete().eq('id', seg[2]);
         throwIf(error); return { ok: true };
+      }
+      if (seg[3] === 'accept-reschedule' && method === 'PATCH') {
+        const { data: apptData, error: fetchErr } = await supabase.from('appointments')
+          .select('id, service, date, time, notes, name').eq('id', seg[2]).eq('user_id', uid).limit(1).single();
+        if (fetchErr || !apptData) throw fail('Appointment not found.', 404);
+        const { error: updateErr } = await supabase.from('appointments')
+          .update({ status: 'approved' }).eq('id', seg[2]);
+        throwIf(updateErr);
+        await supabase.from('notifications').insert({
+          type: 'Appointment', priority: 'normal',
+          title: 'Reschedule Accepted',
+          message: `${apptData.name} accepted the reschedule for ${apptData.service} on ${apptData.date} at ${apptData.time}.`,
+          recipient: 'All Staff', is_read: false,
+        });
+        return { ok: true };
+      }
+      if (seg[3] === 'send-note' && method === 'POST') {
+        const { note } = body;
+        if (!note || !note.trim()) throw fail('Note is required.', 400);
+        const { data: apptData, error: fetchErr } = await supabase.from('appointments')
+          .select('id, service, date, time, notes, name').eq('id', seg[2]).eq('user_id', uid).limit(1).single();
+        if (fetchErr || !apptData) throw fail('Appointment not found.', 404);
+        const userNote = `[NOTE from User] ${note.trim()}`;
+        const updatedNotes = apptData.notes ? `${apptData.notes}\n\n${userNote}` : userNote;
+        const { error: updateErr } = await supabase.from('appointments')
+          .update({ notes: updatedNotes }).eq('id', seg[2]);
+        throwIf(updateErr);
+        await supabase.from('notifications').insert({
+          type: 'Appointment', priority: 'normal',
+          title: 'User Sent a Note',
+          message: `${apptData.name} (${apptData.service}): "${note.trim()}"`,
+          recipient: 'All Staff', is_read: false,
+        });
+        return { ok: true };
       }
     }
 
@@ -370,31 +417,36 @@ async function route(method, rawPath, body = {}) {
       : `[RESCHEDULED by ${handledBy}] Appointment moved from ${oldDate} ${oldTime} to ${date} ${time}.`;
     const combinedNotes = appt.notes ? `${appt.notes}\n\n${rescheduleNote}` : rescheduleNote;
 
-    // Update appointment
+    // Update appointment — include updated_at so the timestamp is always fresh
+    const rescheduleTime = new Date().toISOString();
     const { error: updateErr } = await supabase.from('appointments')
-      .update({ date, time, notes: combinedNotes, status: 'pending', handled_by: handledBy })
+      .update({ date, time, notes: combinedNotes, status: 'pending', handled_by: handledBy, updated_at: rescheduleTime })
       .eq('id', seg[1]);
     if (updateErr) throw fail(updateErr.message);
 
-    // Create notification for the user
+    // Create notification for the user (with user_id so it shows in app)
     const notifTitle = 'Appointment Rescheduled';
     const notifMsg = note
       ? `Your appointment for ${appt.service} has been rescheduled to ${date} at ${time}. Note: ${note}`
       : `Your appointment for ${appt.service} has been rescheduled to ${date} at ${time}.`;
+    // Resolve user_id early so we can attach it to the notification
+    let targetUserId = appt.user_id || null;
+    if (!targetUserId && appt.name) {
+      const { data: users } = await supabase.from('users').select('id').eq('full_name', appt.name).limit(1);
+      if (users && users.length) targetUserId = users[0].id;
+    }
     await supabase.from('notifications').insert({
       type: 'Appointment',
       title: notifTitle,
       message: notifMsg,
       recipient: appt.name,
       priority: 'high',
+      created_at: rescheduleTime,
+      ...(targetUserId ? { user_id: targetUserId } : {}),
+      route: '/user/appointments',
     });
 
     // Send FCM push notification
-    let targetUserId = appt.user_id || null;
-    if (!targetUserId && appt.name) {
-      const { data: users } = await supabase.from('users').select('id').eq('full_name', appt.name).limit(1);
-      if (users && users.length) targetUserId = users[0].id;
-    }
     if (targetUserId) {
       supabase.functions.invoke('send-push', {
         body: {
@@ -500,31 +552,6 @@ async function route(method, rawPath, body = {}) {
     }
     return res;
   }
-  // vaccination create -> store record then send an FCM remote push to the user
-  if (seg[0] === 'vaccinations' && !seg[1] && method === 'POST') {
-    const res = await create(cfg, body);
-    // Resolve the target user id (explicit link, or match by patient name)
-    let targetUserId = body.user_id || null;
-    if (!targetUserId && body.patient) {
-      const { data: users } = await supabase.from('users').select('id').eq('full_name', body.patient).limit(1);
-      if (users && users.length) targetUserId = users[0].id;
-    }
-    if (targetUserId) {
-      const dueStr = body.next_due
-        ? new Date(String(body.next_due).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-        : null;
-      // Fire-and-forget: never block the admin save if push delivery fails
-      supabase.functions.invoke('send-push', {
-        body: {
-          user_id: targetUserId,
-          title: '🆕 New Vaccination Scheduled',
-          body: `${body.vaccine} (${body.dose})${dueStr ? ` — due ${dueStr}` : ''}. Tap to view details.`,
-          route: '/user/vaccinations',
-        },
-      }).catch((e) => console.warn('[push] send-push invoke failed:', e?.message || e));
-    }
-    return res;
-  }
   // announcement create -> broadcast an FCM push to ALL users (published only)
   if (seg[0] === 'announcements' && !seg[1] && method === 'POST') {
     const res = await create(cfg, body);
@@ -556,39 +583,76 @@ async function route(method, rawPath, body = {}) {
   throw fail(`Unhandled route: ${method} /${pathOnly}`, 404);
 }
 
-// Combined "/user/notifications" (announcements + appt status + vaccine reminders)
+// Combined "/user/notifications" (direct notifs + announcements + appt status + reschedules)
 async function buildUserNotifications(uid, fullName) {
+
+  // ── 1. Direct notifications for this user (reschedule, health records, etc.) ──
+  // Use recipient = fullName because the notifications table stores the patient name, not user_id
+  const { data: directNotifs = [] } = await supabase.from('notifications')
+    .select('id, type, title, message, is_read, created_at, route, recipient')
+    .eq('recipient', fullName)
+    .not('recipient', 'eq', 'All Staff')
+    .order('created_at', { ascending: false })
+    .limit(30);
+  const directN = (directNotifs || []).filter((n) => !/vaccin/i.test(`${n.type} ${n.title}`)).map((n) => ({
+    id: `notif_${n.id}`,
+    sourceId: n.id,
+    type: /reschedule/i.test(n.title || '') ? 'reschedule' : n.type === 'health_record' ? 'health_record' : 'appointment',
+    status: /reschedule/i.test(n.title || '') ? 'rescheduled' : 'notified',
+    title: n.title || 'Notification',
+    message: n.message || '',
+    timestamp: n.created_at,
+    navigateTo: n.route || '/user/appointments',
+    isRead: n.is_read,
+  }));
+
+  // ── 2. Announcements ──
   const { data: anns = [] } = await supabase.from('announcements')
     .select('id, title, category, body, author, publish_date, created_at')
     .eq('status', 'published').is('deleted_at', null).order('created_at', { ascending: false });
   const annN = (anns || []).map((a) => ({ id: `ann_${a.id}`, sourceId: a.id, type: 'announcement', category: a.category, title: a.title, message: a.body ? a.body.replace(/<[^>]+>/g, '').slice(0, 100) : '', author: a.author || 'Admin', timestamp: a.created_at, navigateTo: '/user/announcements' }));
 
+  // ── 3. Non-pending appointment status changes ──
   const { data: appts = [] } = await supabase.from('appointments')
-    .select('id, service, date, time, status, updated_at').eq('user_id', uid).is('deleted_at', null)
+    .select('id, service, date, time, status, notes, updated_at').eq('user_id', uid).is('deleted_at', null)
     .neq('status', 'pending').order('updated_at', { ascending: false });
   const label = { approved: 'Approved', rejected: 'Rejected', completed: 'Completed', cancelled: 'Cancelled' };
   const apptN = (appts || []).map((a) => ({ id: `apt_${a.id}`, sourceId: a.id, type: 'appointment', status: a.status, title: `Appointment ${label[a.status] || a.status}`, message: `${a.service} on ${a.date} at ${a.time}`, timestamp: a.updated_at, navigateTo: '/user/appointments' }));
 
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() + 14);
-  const { data: vax = [] } = await supabase.from('vaccinations')
-    .select('id, vaccine, dose, next_due, status, updated_at').is('deleted_at', null)
-    .or(`user_id.eq.${uid},and(user_id.is.null,patient.eq."${fullName}")`)
-    .or(`status.eq.missed,and(status.eq.scheduled,next_due.lte.${cutoff.toISOString().slice(0,10)})`)
-    .order('next_due', { ascending: true });
-  const vaxN = (vax || []).map((v) => {
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    // Parse as LOCAL midnight (date-only) to avoid UTC-shift marking today as overdue
-    const due = v.next_due ? new Date(String(v.next_due).slice(0, 10) + 'T00:00:00') : null;
-    const overdue = due && due < today;
-    const daysAway = due ? Math.round((due - today) / 86400000) : null;
-    let title, message, urgency;
-    if (v.status === 'missed') { title = `Missed Vaccine: ${v.vaccine}`; message = `You missed your ${v.dose} dose. Please schedule a new appointment.`; urgency = 'missed'; }
-    else if (overdue) { title = `Overdue Vaccine: ${v.vaccine}`; message = `Your ${v.dose} dose was overdue. Please schedule immediately.`; urgency = 'overdue'; }
-    else { title = `Upcoming Vaccine: ${v.vaccine}`; message = `Your ${v.dose} dose is due ${daysAway === 0 ? 'today' : `in ${daysAway} day(s)`}.`; urgency = daysAway <= 3 ? 'soon' : 'upcoming'; }
-    return { id: `vax_${v.id}`, sourceId: v.id, type: 'vaccine', urgency, title, message, timestamp: v.updated_at || due, navigateTo: '/user/vaccinations' };
-  });
+  // ── 4. Rescheduled appointments — fetch ALL pending for this user, filter client-side ──
+  // (avoids ilike with '[' special char that can fail in PostgREST URL encoding)
+  const { data: pendingAppts = [] } = await supabase.from('appointments')
+    .select('id, service, date, time, status, notes, updated_at')
+    .eq('user_id', uid).is('deleted_at', null).eq('status', 'pending')
+    .not('notes', 'is', null).order('updated_at', { ascending: false });
+  const reschedN = (pendingAppts || [])
+    .filter((a) => /RESCHEDULED/i.test(a.notes || ''))
+    .map((a) => {
+      const blocks   = (a.notes || '').split('\n\n');
+      const lastNote = [...blocks].reverse().find((b) => /RESCHEDULED/i.test(b)) || '';
+      const cleaned  = lastNote.replace(/\[RESCHEDULED by [^\]]+\]\s*/i, '').trim();
+      return {
+        id: `resched_${a.id}`,
+        sourceId: a.id,
+        type: 'reschedule',
+        status: 'rescheduled',
+        title: 'Appointment Rescheduled',
+        message: cleaned || `Your ${a.service} has been moved to ${a.date} at ${a.time}.`,
+        timestamp: a.updated_at || new Date().toISOString(),
+        navigateTo: '/user/appointments',
+      };
+    });
 
-  return [...annN, ...apptN, ...vaxN].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  // Combine all sources — deduplicate so the same reschedule doesn't appear twice
+  // reschedN (from appointments table) is always reliable since it uses user_id
+  // directN (from notifications table by recipient name) supplements when available
+  const reschedApptIds = new Set(reschedN.map(n => String(n.sourceId)));
+  // Avoid showing appt status entries that are also covered by reschedN
+  const filteredApptN = apptN.filter(n => !reschedApptIds.has(String(n.sourceId)));
+  return [...reschedN, ...directN, ...annN, ...filteredApptN]
+    // Remove exact id duplicates
+    .filter((n, i, arr) => arr.findIndex(x => x.id === n.id) === i)
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
 // ── Public interface (mirrors utils/api.js `api`) ──

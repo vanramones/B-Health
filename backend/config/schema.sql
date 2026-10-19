@@ -1,97 +1,99 @@
--- B-Health Database Schema
--- Run: mysql -u root -p < config/schema.sql
+-- ================================================
+-- B-Health DB Migration: MySQL → Supabase
+-- Paste this in: Supabase → SQL Editor → Run
+-- ================================================
 
-CREATE DATABASE IF NOT EXISTS b_health_db;
-USE b_health_db;
+-- ── Users (para sa appointments foreign key) ──
+CREATE TABLE IF NOT EXISTS users (
+  id          BIGSERIAL PRIMARY KEY,
+  email       VARCHAR(100) NOT NULL UNIQUE,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- ── Admins ──
 CREATE TABLE IF NOT EXISTS admins (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
+  id          BIGSERIAL PRIMARY KEY,
   username    VARCHAR(50)  NOT NULL UNIQUE,
   password    VARCHAR(255) NOT NULL,
   name        VARCHAR(100) NOT NULL,
   email       VARCHAR(100) DEFAULT '',
   role        VARCHAR(50)  DEFAULT 'Staff',
-  is_active   TINYINT(1)   DEFAULT 1,
-  is_owner    TINYINT(1)   DEFAULT 0,
-  created_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
-  updated_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  is_active   BOOLEAN      DEFAULT TRUE,
+  is_owner    BOOLEAN      DEFAULT FALSE,
+  created_at  TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  DEFAULT NOW()
 );
 
 -- ── Residents ──
 CREATE TABLE IF NOT EXISTS residents (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
+  id          BIGSERIAL PRIMARY KEY,
   name        VARCHAR(100) NOT NULL,
   age         INT          NOT NULL,
-  gender      ENUM('Male','Female') NOT NULL,
+  gender      VARCHAR(10)  CHECK (gender IN ('Male','Female')) NOT NULL,
   address     VARCHAR(255) DEFAULT '',
   contact     VARCHAR(50)  DEFAULT '',
-  `condition` VARCHAR(100) DEFAULT 'Healthy',
-  status      ENUM('active','monitoring','inactive') DEFAULT 'active',
-  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  condition   VARCHAR(100) DEFAULT 'Healthy',
+  status      VARCHAR(20)  CHECK (status IN ('active','monitoring','inactive')) DEFAULT 'active',
+  created_at  TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  DEFAULT NOW()
 );
 
 -- ── Appointments ──
 CREATE TABLE IF NOT EXISTS appointments (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  user_id     INT          NULL,
-  resident_id INT          NULL,
+  id          BIGSERIAL PRIMARY KEY,
+  user_id     BIGINT       REFERENCES users(id) ON DELETE SET NULL,
+  resident_id BIGINT       REFERENCES residents(id) ON DELETE SET NULL,
   name        VARCHAR(100) NOT NULL,
   service     VARCHAR(100) NOT NULL,
   date        DATE         NOT NULL,
   time        VARCHAR(20)  NOT NULL,
   phone       VARCHAR(20)  DEFAULT NULL,
   notes       TEXT         DEFAULT NULL,
-  status      ENUM('pending','approved','completed','rejected','cancelled') DEFAULT 'pending',
+  status      VARCHAR(20)  CHECK (status IN ('pending','approved','completed','rejected','cancelled')) DEFAULT 'pending',
   handled_by  VARCHAR(100) DEFAULT NULL,
-  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted_at  TIMESTAMP NULL DEFAULT NULL,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-  FOREIGN KEY (resident_id) REFERENCES residents(id) ON DELETE SET NULL
+  created_at  TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  DEFAULT NOW(),
+  deleted_at  TIMESTAMPTZ  DEFAULT NULL
 );
 
 -- ── Health Records ──
 CREATE TABLE IF NOT EXISTS health_records (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
-  resident_id INT          NULL,
+  id          BIGSERIAL PRIMARY KEY,
+  resident_id BIGINT       REFERENCES residents(id) ON DELETE SET NULL,
   patient     VARCHAR(100) NOT NULL,
   type        VARCHAR(50)  NOT NULL,
   diagnosis   VARCHAR(255) NOT NULL,
   doctor      VARCHAR(100) NOT NULL,
   date        DATE         NOT NULL,
   notes       TEXT         DEFAULT NULL,
-  prescription TINYINT(1)  DEFAULT 0,
-  status      ENUM('ongoing','follow-up','closed') DEFAULT 'ongoing',
-  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted_at  TIMESTAMP NULL DEFAULT NULL,
-  FOREIGN KEY (resident_id) REFERENCES residents(id) ON DELETE SET NULL
+  prescription BOOLEAN     DEFAULT FALSE,
+  status      VARCHAR(20)  CHECK (status IN ('ongoing','follow-up','closed')) DEFAULT 'ongoing',
+  created_at  TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  DEFAULT NOW(),
+  deleted_at  TIMESTAMPTZ  DEFAULT NULL
 );
 
 -- ── Vaccinations ──
 CREATE TABLE IF NOT EXISTS vaccinations (
-  id              INT AUTO_INCREMENT PRIMARY KEY,
-  resident_id     INT          NULL,
+  id              BIGSERIAL PRIMARY KEY,
+  resident_id     BIGINT       REFERENCES residents(id) ON DELETE SET NULL,
   patient         VARCHAR(100) NOT NULL,
   age             INT          DEFAULT 0,
   vaccine         VARCHAR(100) NOT NULL,
   dose            VARCHAR(50)  NOT NULL,
   date            DATE         NOT NULL,
-  next_due        DATE         NULL,
+  next_due        DATE         DEFAULT NULL,
   administered_by VARCHAR(100) DEFAULT '',
   site            VARCHAR(50)  DEFAULT '',
-  status          ENUM('scheduled','completed','missed') DEFAULT 'scheduled',
-  created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted_at      TIMESTAMP NULL DEFAULT NULL,
-  FOREIGN KEY (resident_id) REFERENCES residents(id) ON DELETE SET NULL
+  status          VARCHAR(20)  CHECK (status IN ('scheduled','completed','missed')) DEFAULT 'scheduled',
+  created_at      TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ  DEFAULT NOW(),
+  deleted_at      TIMESTAMPTZ  DEFAULT NULL
 );
 
 -- ── Services ──
 CREATE TABLE IF NOT EXISTS services (
-  id            INT AUTO_INCREMENT PRIMARY KEY,
+  id            BIGSERIAL PRIMARY KEY,
   name          VARCHAR(100) NOT NULL,
   category      VARCHAR(50)  NOT NULL,
   icon          VARCHAR(50)  DEFAULT 'heart',
@@ -101,32 +103,32 @@ CREATE TABLE IF NOT EXISTS services (
   schedule      VARCHAR(255) DEFAULT '',
   location      VARCHAR(255) DEFAULT '',
   staff         VARCHAR(255) DEFAULT '',
-  is_active     TINYINT(1)   DEFAULT 1,
-  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted_at    TIMESTAMP NULL DEFAULT NULL
+  is_active     BOOLEAN      DEFAULT TRUE,
+  created_at    TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ  DEFAULT NOW(),
+  deleted_at    TIMESTAMPTZ  DEFAULT NULL
 );
 
 -- ── Announcements ──
 CREATE TABLE IF NOT EXISTS announcements (
-  id            INT AUTO_INCREMENT PRIMARY KEY,
+  id            BIGSERIAL PRIMARY KEY,
   title         VARCHAR(255) NOT NULL,
   category      VARCHAR(50)  NOT NULL,
   body          TEXT         NOT NULL,
   author        VARCHAR(100) DEFAULT '',
   audience      VARCHAR(100) DEFAULT 'All Residents',
   publish_date  DATE         NOT NULL,
-  event_date    DATE         NULL,
-  status        ENUM('draft','published','archived') DEFAULT 'draft',
-  pinned        TINYINT(1)   DEFAULT 0,
-  created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  deleted_at    TIMESTAMP NULL DEFAULT NULL
+  event_date    DATE         DEFAULT NULL,
+  status        VARCHAR(20)  CHECK (status IN ('draft','published','archived')) DEFAULT 'draft',
+  pinned        BOOLEAN      DEFAULT FALSE,
+  created_at    TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ  DEFAULT NOW(),
+  deleted_at    TIMESTAMPTZ  DEFAULT NULL
 );
 
 -- ── Emergency Contacts ──
 CREATE TABLE IF NOT EXISTS emergency_contacts (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
+  id          BIGSERIAL PRIMARY KEY,
   name        VARCHAR(100) NOT NULL,
   category    VARCHAR(50)  NOT NULL,
   phone       VARCHAR(50)  NOT NULL,
@@ -134,21 +136,21 @@ CREATE TABLE IF NOT EXISTS emergency_contacts (
   email       VARCHAR(100) DEFAULT '',
   address     VARCHAR(255) DEFAULT '',
   available   VARCHAR(50)  DEFAULT '24/7',
-  is_active   TINYINT(1)   DEFAULT 1,
-  is_favorite TINYINT(1)   DEFAULT 0,
+  is_active   BOOLEAN      DEFAULT TRUE,
+  is_favorite BOOLEAN      DEFAULT FALSE,
   notes       TEXT         DEFAULT NULL,
-  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  created_at  TIMESTAMPTZ  DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  DEFAULT NOW()
 );
 
 -- ── Notifications ──
 CREATE TABLE IF NOT EXISTS notifications (
-  id          INT AUTO_INCREMENT PRIMARY KEY,
+  id          BIGSERIAL PRIMARY KEY,
   type        VARCHAR(50)  NOT NULL,
-  priority    ENUM('low','normal','urgent') DEFAULT 'normal',
+  priority    VARCHAR(10)  CHECK (priority IN ('low','normal','urgent')) DEFAULT 'normal',
   title       VARCHAR(255) NOT NULL,
   message     TEXT         NOT NULL,
   recipient   VARCHAR(100) DEFAULT 'All Staff',
-  is_read     TINYINT(1)   DEFAULT 0,
-  created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  is_read     BOOLEAN      DEFAULT FALSE,
+  created_at  TIMESTAMPTZ  DEFAULT NOW()
 );

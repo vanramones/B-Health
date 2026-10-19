@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>B-Health — Functional Decomposition Diagram</title>
+<style>
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #f1f5f9; }
+  header { padding: 16px 24px 4px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; }
+  button { background: #0f172a; color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
+  .wrap { padding: 10px 24px 24px; }
+  .sheet { background: #fff; border: 1px solid #cbd5e1; padding: 16px; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: Arial, Helvetica, sans-serif; fill: #000; }
+  @media print {
+    @page { size: landscape; margin: 6mm; }
+    body { background: #fff; }
+    header { display: none; }
+    .wrap { padding: 0; }
+    .sheet { border: 0; padding: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>B-Health: Functional Decomposition Diagram</h1>
+  <div style="display:flex;gap:8px">
+    <button onclick="downloadPng('fdd', 'B-Health_FDD.png')">Download as Image (PNG)</button>
+    <button onclick="window.print()">Print / Save as PDF</button>
+  </div>
+</header>
+<div class="wrap"><div class="sheet"><svg id="fdd" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
+
+<script src="export-png.js"></script>
+<script>
+const ROOT = 'B-Health';
+const TREE = [
+  { name: 'USER', modules: [
+    { name: 'MANAGE ACCOUNT',     funcs: ['REGISTER ACCOUNT', 'LOG IN', 'UPDATE PROFILE'] },
+    { name: 'APPOINTMENTS',       funcs: ['BOOK APPOINTMENT', 'ACCEPT RESCHEDULE', 'SEND NOTE TO ADMIN', 'VIEW APPOINTMENT HISTORY'] },
+    { name: 'HEALTH RECORDS',     funcs: ['VIEW HEALTH RECORDS', 'SEARCH RECORDS'] },
+    { name: 'HEALTH SERVICES',    funcs: ['VIEW SERVICES', 'BOOK SERVICE'] },
+    { name: 'ANNOUNCEMENT',       funcs: ['VIEW ANNOUNCEMENT'] },
+    { name: 'NOTIFICATIONS',      funcs: ['VIEW NOTIFICATIONS'] },
+    { name: 'EMERGENCY CONTACTS', funcs: ['VIEW CONTACTS', 'CALL CONTACT'] },
+  ]},
+  { name: 'ADMIN', modules: [
+    { name: 'DASHBOARD',              funcs: ['VIEW OVERALL APPOINTMENTS AND RECORDS'] },
+    { name: 'APPOINTMENT MANAGEMENT', funcs: ['APPROVE / REJECT APPOINTMENT', 'RESCHEDULE APPOINTMENT', 'COMPLETE APPOINTMENT'] },
+    { name: 'USER MANAGEMENT',        funcs: ['VIEW REGISTERED USERS', 'ACTIVATE / DEACTIVATE USER'] },
+    { name: 'HEALTH RECORD MANAGEMENT', funcs: ['ADD RECORD', 'UPDATE RECORD', 'DELETE RECORD'] },
+    { name: 'SERVICE MANAGEMENT',     funcs: ['ADD SERVICE', 'UPDATE SERVICE', 'DELETE SERVICE'] },
+    { name: 'ANNOUNCEMENTS',          funcs: ['CREATE ANNOUNCEMENT', 'PUBLISH ANNOUNCEMENT', 'PIN ANNOUNCEMENT'] },
+    { name: 'EMERGENCY CONTACTS',     funcs: ['ADD CONTACT', 'UPDATE CONTACT', 'DEACTIVATE CONTACT'] },
+    { name: 'REPORTS',                funcs: ['GENERATE WEEKLY / MONTHLY REPORT', 'EXPORT PDF / EXCEL', 'PRINT REPORT'] },
+  ]},
+];
+
+// ── layout ──
+const BW = 96, BH = 46, COLW = 112, GROUP_GAP = 40, LEFT = 20;
+const Y = { root: 20, actor: 125, module: 215, func: 290 }, FPITCH = 62;
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('fdd');
+const add = (tag, attrs, text) => {
+  const e = document.createElementNS(NS, tag);
+  Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
+  if (text != null) e.textContent = text;
+  svg.appendChild(e); return e;
+};
+const line = (pts) => add('polyline', { points: pts.map((p) => p.join(',')).join(' '), fill: 'none', stroke: '#000', 'stroke-width': 1.1 });
+
+// word-wrap a label into lines of ~maxChars
+const wrap = (t, maxChars) => t.split(' ').reduce((ls, w) => {
+  const last = ls[ls.length - 1];
+  if (last && (last + ' ' + w).length <= maxChars) ls[ls.length - 1] = last + ' ' + w; else ls.push(w);
+  return ls;
+}, []);
+const box = (cx, y, w, h, label, { size = 8.5, maxChars = 15, rx = 5 } = {}) => {
+  add('rect', { x: cx - w / 2, y, width: w, height: h, rx, fill: '#fff', stroke: '#000', 'stroke-width': 1.2 });
+  const ls = wrap(label, maxChars);
+  const lh = size + 2.5, top = y + h / 2 - (ls.length * lh) / 2 + size - 1;
+  ls.forEach((l, i) => add('text', { x: cx, y: top + i * lh, 'font-size': size, 'font-weight': 700, 'text-anchor': 'middle' }, l));
+};
+
+// column x-positions
+let x = LEFT;
+TREE.forEach((g, gi) => {
+  if (gi) x += GROUP_GAP;
+  g.modules.forEach((m) => { m.cx = x + COLW / 2; x += COLW; });
+  g.cx = (g.modules[0].cx + g.modules[g.modules.length - 1].cx) / 2;
+});
+const W = x + LEFT;
+const maxFuncs = Math.max(...TREE.flatMap((g) => g.modules.map((m) => m.funcs.length)));
+const H = Y.func + maxFuncs * FPITCH + 10;
+svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+// connectors: parent bottom -> bus -> children top
+const bus = (px, py, children, cy) => {
+  const midY = (py + cy) / 2;
+  line([[px, py], [px, midY]]);
+  line([[Math.min(...children), midY], [Math.max(...children), midY]]);
+  children.forEach((c) => line([[c, midY], [c, cy]]));
+};
+
+// root
+const rootX = W / 2;
+box(rootX, Y.root, 260, 52, ROOT, { size: 20, maxChars: 40, rx: 8 });
+bus(rootX, Y.root + 52, TREE.map((g) => g.cx), Y.actor);
+
+TREE.forEach((g) => {
+  box(g.cx, Y.actor, 120, 40, g.name, { size: 13, rx: 7 });
+  bus(g.cx, Y.actor + 40, g.modules.map((m) => m.cx), Y.module);
+
+  g.modules.forEach((m) => {
+    box(m.cx, Y.module, BW, BH, m.name);
+    // functions stacked under the module, joined by a vertical line on the right side
+    const railX = m.cx + BW / 2 + 7;
+    const fy = m.funcs.map((_, i) => Y.func + i * FPITCH);
+    line([[m.cx + BW / 2, Y.module + BH / 2], [railX, Y.module + BH / 2], [railX, fy[fy.length - 1] + BH / 2]]);
+    m.funcs.forEach((f, i) => {
+      box(m.cx, fy[i], BW, BH, f);
+      line([[railX, fy[i] + BH / 2], [m.cx + BW / 2, fy[i] + BH / 2]]);
+    });
+  });
+});
+</script>
+</body>
+</html>

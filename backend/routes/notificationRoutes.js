@@ -20,7 +20,8 @@ router.delete('/:id',              auth, crud.remove);
 router.patch('/read-all', auth, async (req, res) => {
   try {
     const db = require('../config/db');
-    await db.query('UPDATE notifications SET is_read = 1');
+    const { error } = await db.from('notifications').update({ is_read: true }).gt('id', 0);
+    if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../../utils/api';
 import { Card, Row, Col, Button, Badge } from 'react-bootstrap';
-import { Trash2, RotateCcw, X, Calendar, Users, Syringe, Megaphone, FileText, Heart, Bell, Phone } from 'lucide-react';
+import { Trash2, RotateCcw, X, Calendar, Megaphone, FileText, Heart, Bell, Phone } from 'lucide-react';
 
 const CATEGORIES = [
   { key: 'appointments',     label: 'Appointments',      icon: <Calendar  size={15} />, endpoint: '/appointments',     nameKey: 'name',    subKey: 'service'   },
-  { key: 'residents',        label: 'Residents',         icon: <Users     size={15} />, endpoint: '/residents',        nameKey: 'name',    subKey: 'condition' },
   { key: 'health-records',   label: 'Health Records',    icon: <FileText  size={15} />, endpoint: '/health-records',   nameKey: 'patient', subKey: 'diagnosis' },
-  { key: 'vaccinations',     label: 'Vaccinations',      icon: <Syringe   size={15} />, endpoint: '/vaccinations',     nameKey: 'patient', subKey: 'vaccine'   },
   { key: 'announcements',    label: 'Announcements',     icon: <Megaphone size={15} />, endpoint: '/announcements',    nameKey: 'title',   subKey: 'category'  },
   { key: 'notifications',    label: 'Notifications',     icon: <Bell      size={15} />, endpoint: '/notifications',    nameKey: 'title',   subKey: 'type'      },
   { key: 'emergency-contacts',label: 'Emergency Contacts',icon: <Phone    size={15} />, endpoint: '/emergency-contacts',nameKey: 'name',   subKey: 'category'  },
@@ -109,7 +107,7 @@ const Trash = () => {
           const cnt   = counts[c.key] || 0;
           const isAct = active === c.key;
           return (
-            <Col key={c.key} xs={6} sm={4} md={3}>
+            <Col key={c.key} xs={6} sm={4} md={4}>
               <Card
                 className="border rounded-4 bh-card-hover"
                 onClick={() => setActive(c.key)}

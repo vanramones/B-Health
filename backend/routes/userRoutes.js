@@ -9,12 +9,13 @@ router.get('/notifications', userAuth, async (req, res) => {
     const userId = req.user.id;
 
     // 1. Recent published announcements (last 30 days)
-    const [announcements] = await db.query(
-      `SELECT id, title, category, body, author, publish_date, created_at
-       FROM announcements
-       WHERE status = 'published' AND deleted_at IS NULL
-       ORDER BY created_at DESC`
-    );
+    const { data: announcements = [], error: annErr } = await db
+      .from('announcements')
+      .select('id, title, category, body, author, publish_date, created_at')
+      .eq('status', 'published')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false });
+    if (annErr) throw annErr;
 
     const announcementNotifs = announcements.map((a) => ({
       id:         `ann_${a.id}`,
@@ -29,13 +30,14 @@ router.get('/notifications', userAuth, async (req, res) => {
     }));
 
     // 2. User's appointment status updates (non-pending)
-    const [appointments] = await db.query(
-      `SELECT id, service, date, time, status, updated_at
-       FROM appointments
-       WHERE user_id = ? AND deleted_at IS NULL AND status != 'pending'
-       ORDER BY updated_at DESC`,
-      [userId]
-    );
+    const { data: appointments = [], error: aptErr } = await db
+      .from('appointments')
+      .select('id, service, date, time, status, updated_at')
+      .eq('user_id', userId)
+      .is('deleted_at', null)
+      .neq('status', 'pending')
+      .order('updated_at', { ascending: false });
+    if (aptErr) throw aptErr;
 
     const statusLabel = { approved: 'Approved', rejected: 'Rejected', completed: 'Completed', cancelled: 'Cancelled' };
     const appointmentNotifs = appointments.map((a) => ({
@@ -50,18 +52,19 @@ router.get('/notifications', userAuth, async (req, res) => {
     }));
 
     // 3. Vaccine due-date reminders (due within 14 days, overdue, or missed)
-    const [vaccines] = await db.query(
-      `SELECT id, vaccine, dose, next_due, status, updated_at
-       FROM vaccinations
-       WHERE (user_id = ? OR (user_id IS NULL AND patient = ?))
-         AND deleted_at IS NULL
-         AND (
-           status = 'missed'
-           OR (status = 'scheduled' AND next_due IS NOT NULL AND next_due <= DATE_ADD(CURDATE(), INTERVAL 14 DAY))
-         )
-       ORDER BY next_due ASC`,
-      [userId, req.user.full_name]
-    );
+    const vaxCutoff = new Date();
+    vaxCutoff.setDate(vaxCutoff.getDate() + 14);
+    const vaxCutoffStr = vaxCutoff.toISOString().slice(0, 10);
+    const fullName = req.user.full_name || '';
+
+    const { data: vaccines = [], error: vaxErr } = await db
+      .from('vaccinations')
+      .select('id, vaccine, dose, next_due, status, updated_at')
+      .is('deleted_at', null)
+      .or(`user_id.eq.${userId},and(user_id.is.null,patient.eq."${fullName}")`)
+      .or(`status.eq.missed,and(status.eq.scheduled,next_due.lte.${vaxCutoffStr})`)
+      .order('next_due', { ascending: true });
+    if (vaxErr) throw vaxErr;
 
     const vaccineNotifs = vaccines.map((v) => {
       const today    = new Date();
@@ -111,12 +114,14 @@ router.get('/notifications', userAuth, async (req, res) => {
 // GET /api/user/announcements — published announcements visible to users
 router.get('/announcements', userAuth, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT id, title, category, body, author, audience, publish_date, event_date, pinned, created_at
-       FROM announcements
-       WHERE status = 'published' AND deleted_at IS NULL
-       ORDER BY pinned DESC, created_at DESC`
-    );
+    const { data: rows, error } = await db
+      .from('announcements')
+      .select('id, title, category, body, author, audience, publish_date, event_date, pinned, created_at')
+      .eq('status', 'published')
+      .is('deleted_at', null)
+      .order('pinned', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) throw error;
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -126,12 +131,13 @@ router.get('/announcements', userAuth, async (req, res) => {
 // GET /api/user/health-records — records belonging to the logged-in user
 router.get('/health-records', userAuth, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT * FROM health_records
-       WHERE patient = ? AND deleted_at IS NULL
-       ORDER BY date DESC`,
-      [req.user.full_name]
-    );
+    const { data: rows, error } = await db
+      .from('health_records')
+      .select('*')
+      .eq('patient', req.user.full_name || '')
+      .is('deleted_at', null)
+      .order('date', { ascending: false });
+    if (error) throw error;
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -141,13 +147,13 @@ router.get('/health-records', userAuth, async (req, res) => {
 // GET /api/user/vaccinations — vaccinations belonging to the logged-in user
 router.get('/vaccinations', userAuth, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT * FROM vaccinations
-       WHERE (user_id = ? OR (user_id IS NULL AND patient = ?))
-         AND deleted_at IS NULL
-       ORDER BY date DESC`,
-      [req.user.id, req.user.full_name]
-    );
+    const { data: rows, error } = await db
+      .from('vaccinations')
+      .select('*')
+      .is('deleted_at', null)
+      .or(`user_id.eq.${req.user.id},and(user_id.is.null,patient.eq."${req.user.full_name || ''}")`)
+      .order('date', { ascending: false });
+    if (error) throw error;
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -157,14 +163,13 @@ router.get('/vaccinations', userAuth, async (req, res) => {
 // GET /api/user/notifications — notifications for the logged-in user
 router.get('/notifications', userAuth, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT id, type, title, message, priority, is_read, created_at as timestamp
-       FROM notifications
-       WHERE recipient = ? OR recipient = 'All Users'
-       ORDER BY created_at DESC
-       LIMIT 50`,
-      [req.user.full_name]
-    );
+    const { data: rows, error } = await db
+      .from('notifications')
+      .select('id, type, title, message, priority, is_read, timestamp:created_at')
+      .or(`recipient.eq."${req.user.full_name || ''}",recipient.eq."All Users"`)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
     
     // Map notifications with proper structure for frontend
     const notifications = rows.map((n) => ({
@@ -184,17 +189,42 @@ router.get('/notifications', userAuth, async (req, res) => {
   }
 });
 
+// POST /api/user/notifications — create a notification for the logged-in user
+router.post('/notifications', userAuth, async (req, res) => {
+  try {
+    const { type, title, message, priority, data } = req.body;
+    
+    const { data: notification, error } = await db
+      .from('notifications')
+      .insert({
+        type: type || 'vaccination_reminder',
+        title: title || 'Vaccination Reminder',
+        message: message || '',
+        recipient: req.user.full_name || req.user.username,
+        priority: priority || 'normal',
+        is_read: false,
+        data: data || null,
+      })
+      .select()
+      .single();
+    
+    if (error) throw error;
+    res.json(notification);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Keep old endpoint for backward compatibility
 router.get('/notifications-list', userAuth, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT id, type, title, message, priority, is_read, created_at
-       FROM notifications
-       WHERE recipient = ? OR recipient = 'All Users'
-       ORDER BY created_at DESC
-       LIMIT 50`,
-      [req.user.full_name]
-    );
+    const { data: rows, error } = await db
+      .from('notifications')
+      .select('id, type, title, message, priority, is_read, created_at')
+      .or(`recipient.eq."${req.user.full_name || ''}",recipient.eq."All Users"`)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -209,15 +239,13 @@ router.get('/search', userAuth, async (req, res) => {
       return res.json([]);
     }
 
-    const searchTerm = `%${query}%`;
-    const [rows] = await db.query(
-      `SELECT id, full_name, email, phone, barangay
-       FROM users
-       WHERE (full_name LIKE ? OR email LIKE ? OR phone LIKE ?)
-         AND deleted_at IS NULL
-       LIMIT 10`,
-      [searchTerm, searchTerm, searchTerm]
-    );
+    const like = `%${query}%`;
+    const { data: rows, error } = await db
+      .from('users')
+      .select('id, full_name, username, phone, purok')
+      .or(`full_name.ilike.${like},username.ilike.${like},phone.ilike.${like}`)
+      .limit(10);
+    if (error) throw error;
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

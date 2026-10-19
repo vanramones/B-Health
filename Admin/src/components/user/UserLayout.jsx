@@ -10,7 +10,7 @@ import {
 import {
   homeOutline, home, calendarOutline, calendar, documentTextOutline, documentText,
   medkitOutline, medkit, personOutline, person, logOutOutline, megaphoneOutline,
-  megaphone, timeOutline, time, shieldCheckmarkOutline, shieldCheckmark,
+  megaphone, timeOutline, time,
   callOutline, call, notificationsOutline, notifications,
 } from 'ionicons/icons';
 import {
@@ -18,8 +18,9 @@ import {
 } from 'lucide-react';
 import { useUserAuth, userApi } from '../../context/UserAuthContext';
 import { useLanguage } from '../../context/LanguageContext';
-import vaccinationReminderService from '../../services/vaccinationReminderService';
 import pushNotificationService from '../../services/pushNotificationService';
+import { supabase } from '../../config/supabase';
+import { CalendarClock, MessageSquare, Bell as BellIcon, X as XIcon } from 'lucide-react';
 
 const SEEN_KEY = 'bh_seen_notifs_v2';
 
@@ -48,14 +49,19 @@ const aptStatus = {
   cancelled: { bg: '#f3f4f6', color: '#6b7280' },
 };
 
-function UserNotificationBell({ navigate }) {
+function UserNotificationBell({ navigate, currentUserId, currentUserName }) {
   const [open, setOpen]       = useState(false);
   const [items, setItems]     = useState([]);
   const [seenIds, setSeenIds] = useState(getSeenIds);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter]   = useState('all');
+  const [banner, setBanner]   = useState(null); // in-app banner {title, message, type}
   const bellRef               = useRef(null);
   const dropRef               = useRef(null);
+  const bannerTimerRef        = useRef(null);
+  // Always-fresh ref so the realtime closure reads the latest name
+  const currentUserNameRef    = useRef(currentUserName);
+  useEffect(() => { currentUserNameRef.current = currentUserName; }, [currentUserName]);
 
   const unreadCount = items.filter((n) => !seenIds.has(n.id)).length;
   const displayed   = filter === 'unread' ? items.filter((n) => !seenIds.has(n.id)) : items;
@@ -64,12 +70,75 @@ function UserNotificationBell({ navigate }) {
     setLoading(true);
     try {
       const data = await userApi.get('/user/notifications');
-      setItems(Array.isArray(data) ? data : []);
-    } catch { setItems([]); }
+      const fetched = Array.isArray(data) ? data : [];
+      const fetchedIds = new Set(fetched.map((n) => String(n.id)));
+      setItems((prev) => {
+        // Keep realtime-added items that are not yet in the fetched list
+        const realtimeOnly = prev.filter((n) => !fetchedIds.has(String(n.id)));
+        return [...fetched, ...realtimeOnly].sort(
+          (a, b) => new Date(b.timestamp || b.created_at) - new Date(a.timestamp || a.created_at)
+        );
+      });
+    } catch { /* keep existing items on error */ }
     setLoading(false);
   }, []);
 
   useEffect(() => { fetchNotifs(); }, [fetchNotifs]);
+
+  // ── Realtime: listen for new notifications (user app only sees user notifications) ──
+  useEffect(() => {
+    const channel = supabase
+      .channel('user-notifs-realtime')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+      }, (payload) => {
+        const n = payload.new;
+        if (!n) return;
+        // Skip admin/staff-only notifications
+        const recipient = (n.recipient || '').trim();
+        if (recipient === 'All Staff') return;
+        if (/vaccin/i.test(`${n.type} ${n.title}`)) return;
+        // If we know the user's name, also skip notifications not meant for them
+        const myName = (currentUserNameRef.current || '').toLowerCase().trim();
+        if (myName && recipient && recipient.toLowerCase().trim() !== myName) return;
+        // Build notification item for the bell
+        const isReschedule = /reschedule/i.test(n.title || '');
+        const newItem = {
+          id: `notif_${n.id}`,
+          sourceId: n.id,
+          type: isReschedule ? 'reschedule' : (n.type === 'health_record' ? 'health_record' : 'appointment'),
+          status: isReschedule ? 'rescheduled' : 'notified',
+          title: n.title || 'New Notification',
+          message: n.message || '',
+          timestamp: n.created_at || new Date().toISOString(),
+          navigateTo: n.route || '/user/appointments',
+          isRead: false,
+        };
+        // Add to bell list immediately
+        setItems((prev) => {
+          const exists = prev.some((x) => x.id === newItem.id);
+          return exists ? prev : [newItem, ...prev];
+        });
+        // Re-fetch after 1.5s so the DB-sourced list (reschedN) also loads
+        setTimeout(() => fetchNotifs(), 1500);
+        // Show dark banner
+        setBanner({
+          id: n.id,
+          title: n.title || 'New Notification',
+          message: n.message || '',
+          type: isReschedule ? 'reschedule' : 'general',
+          route: n.route || '/user/appointments',
+        });
+        clearTimeout(bannerTimerRef.current);
+        bannerTimerRef.current = setTimeout(() => setBanner(null), 6000);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  // Re-subscribe only when the user name is first resolved
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -104,22 +173,78 @@ function UserNotificationBell({ navigate }) {
 
   return (
     <div style={{ position: 'relative' }} ref={bellRef}>
+
+      {/* ── In-app notification banner (reschedule / general) ── */}
+      {banner && ReactDOM.createPortal(
+        <div
+          onClick={() => { setBanner(null); navigate(banner.route); }}
+          style={{
+            position: 'fixed', top: 16, left: 12, right: 12, zIndex: 99999,
+            background: banner.type === 'reschedule'
+              ? 'linear-gradient(135deg, #0f172a, #1e293b)'
+              : 'linear-gradient(135deg, #0f766e, #0d9488)',
+            borderRadius: 16,
+            padding: '14px 16px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+            cursor: 'pointer',
+            border: `1px solid ${banner.type === 'reschedule' ? '#334155' : '#14b8a6'}`,
+            animation: 'bh-banner-in 0.35s cubic-bezier(0.34,1.56,0.64,1)',
+          }}
+        >
+          <style>{`
+            @keyframes bh-banner-in {
+              from { opacity:0; transform: translateY(-20px) scale(0.95); }
+              to   { opacity:1; transform: translateY(0) scale(1); }
+            }
+          `}</style>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+            background: banner.type === 'reschedule' ? 'rgba(245,158,11,0.2)' : 'rgba(255,255,255,0.15)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {banner.type === 'reschedule'
+              ? <CalendarClock size={18} color="#fbbf24" />
+              : <BellIcon size={18} color="#fff" />}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: banner.type === 'reschedule' ? '#fbbf24' : '#fff', marginBottom: 2 }}>
+              {banner.title}
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+              {banner.message}
+            </div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', marginTop: 4 }}>
+              Tap to view appointment →
+            </div>
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); setBanner(null); }}
+            style={{ background: 'none', border: 'none', padding: 4, cursor: 'pointer', color: 'rgba(255,255,255,0.5)', flexShrink: 0 }}
+          >
+            <XIcon size={14} />
+          </button>
+        </div>,
+        document.body
+      )}
+
       {/* Bell button */}
       <div
         style={{
-          width: 40, height: 40, borderRadius: '50%', cursor: 'pointer',
-          backgroundColor: open ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)',
+          width: 38, height: 38, borderRadius: '50%', cursor: 'pointer',
+          backgroundColor: open ? '#f0fdfa' : '#f1f5f9',
+          border: `1.5px solid ${open ? '#99f6e4' : '#e2e8f0'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           position: 'relative', transition: 'background 0.15s',
         }}
         onClick={handleOpen}
       >
-        <IonIcon icon={notificationsOutline} style={{ fontSize: 22, color: '#fff' }} />
+        <IonIcon icon={notificationsOutline} style={{ fontSize: 20, color: '#0d9488' }} />
         {unreadCount > 0 && (
           <span style={{
-            position: 'absolute', top: 2, right: 2,
-            minWidth: 16, height: 16, borderRadius: 999,
-            backgroundColor: '#e53935', border: '2px solid #1e40af',
+            position: 'absolute', top: 1, right: 1,
+            minWidth: 15, height: 15, borderRadius: 999,
+            backgroundColor: '#ef4444', border: '2px solid #fff',
             fontSize: 9, fontWeight: 800, color: '#fff',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '0 3px', lineHeight: 1,
@@ -241,16 +366,22 @@ function UserNotificationBell({ navigate }) {
                     </div>
                   )}
                   {displayed.slice(0, 7).map((n) => {
-                    const seen    = seenIds.has(n.id);
-                    const isAnn   = n.type === 'announcement';
-                    const isVax   = n.type === 'vaccine';
-                    const ss      = (!isAnn && !isVax) ? (aptStatus[n.status] || aptStatus.cancelled) : null;
-                    const vaxBgMap = { missed: 'linear-gradient(135deg,#dc2626,#b91c1c)', overdue: 'linear-gradient(135deg,#dc2626,#b91c1c)', soon: 'linear-gradient(135deg,#f59e0b,#d97706)', upcoming: 'linear-gradient(135deg,#3b82f6,#2563eb)' };
-                    const iconBg  = isAnn
+                    const seen       = seenIds.has(n.id);
+                    const isAnn      = n.type === 'announcement';
+                    const isVax      = n.type === 'vaccine';
+                    const isResched  = n.type === 'reschedule';
+                    const isHealth   = n.type === 'health_record';
+                    const ss         = (!isAnn && !isVax && !isResched && !isHealth) ? (aptStatus[n.status] || aptStatus.cancelled) : null;
+                    const vaxBgMap   = { missed: 'linear-gradient(135deg,#dc2626,#b91c1c)', overdue: 'linear-gradient(135deg,#dc2626,#b91c1c)', soon: 'linear-gradient(135deg,#f59e0b,#d97706)', upcoming: 'linear-gradient(135deg,#3b82f6,#2563eb)' };
+                    const iconBg     = isAnn
                       ? 'linear-gradient(135deg, #facc15, #f59e0b)'
                       : isVax
                         ? (vaxBgMap[n.urgency] || vaxBgMap.upcoming)
-                        : `linear-gradient(135deg, ${ss?.color}cc, ${ss?.color})`;
+                        : isResched
+                          ? 'linear-gradient(135deg, #f59e0b, #d97706)'
+                          : isHealth
+                            ? 'linear-gradient(135deg, #0d9488, #0f766e)'
+                            : `linear-gradient(135deg, ${ss?.color}cc, ${ss?.color})`;
                     return (
                       <div
                         key={n.id}
@@ -259,7 +390,7 @@ function UserNotificationBell({ navigate }) {
                         style={{
                           padding: '8px 12px',
                           display: 'flex', alignItems: 'center', gap: 12,
-                          backgroundColor: seen ? '#fff' : (isVax && (n.urgency === 'missed' || n.urgency === 'overdue') ? '#fff1f2' : '#e7f3ff'),
+                          backgroundColor: seen ? '#fff' : (isResched ? '#fffbeb' : isVax && (n.urgency === 'missed' || n.urgency === 'overdue') ? '#fff1f2' : '#e7f3ff'),
                           cursor: 'pointer', borderRadius: 8, margin: '2px 4px',
                         }}
                       >
@@ -271,7 +402,7 @@ function UserNotificationBell({ navigate }) {
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: 24,
                           }}>
-                            {isAnn ? '📢' : isVax ? '💉' : '🏥'}
+                            {isAnn ? '📢' : isVax ? '💉' : isResched ? '📅' : '🏥'}
                           </div>
                           {/* small icon badge */}
                           <div style={{
@@ -284,8 +415,10 @@ function UserNotificationBell({ navigate }) {
                             {isAnn
                               ? <Megaphone size={11} color="#fff" />
                               : isVax
-                                ? <Syringe  size={11} color="#fff" />
-                                : <Calendar  size={11} color="#fff" />}
+                                ? <Syringe    size={11} color="#fff" />
+                                : isResched
+                                  ? <CalendarClock size={11} color="#fff" />
+                                  : <Calendar size={11} color="#fff" />}
                           </div>
                         </div>
 
@@ -350,12 +483,14 @@ function UserNotificationBell({ navigate }) {
   );
 }
 
+const PRIMARY = '#0d9488';   // teal-600 — professional health green
+
 const getBottomNavItems = (t) => [
-  { path: '/user',                  labelKey: 'home',         icon: homeOutline,         activeIcon: home,         color: '#1d4ed8', activeBg: '#dbeafe' },
-  { path: '/user/appointments',     labelKey: 'appointments', icon: calendarOutline,     activeIcon: calendar,     color: '#7c3aed', activeBg: '#ede9fe' },
-  { path: '/user/health-records',   labelKey: 'records',      icon: documentTextOutline, activeIcon: documentText, color: '#0891b2', activeBg: '#cffafe' },
-  { path: '/user/health-services',  labelKey: 'services',     icon: medkitOutline,       activeIcon: medkit,       color: '#059669', activeBg: '#d1fae5' },
-  { path: '/user/profile',          labelKey: 'profile',      icon: personOutline,       activeIcon: person,       color: '#e11d48', activeBg: '#ffe4e6' },
+  { path: '/user',                  labelKey: 'home',         icon: homeOutline,         activeIcon: home,         color: PRIMARY, activeBg: '#ccfbf1' },
+  { path: '/user/health-records',   labelKey: 'records',      icon: documentTextOutline, activeIcon: documentText, color: PRIMARY, activeBg: '#ccfbf1' },
+  { path: '/user/appointments',     labelKey: 'appointments', icon: calendarOutline,     activeIcon: calendar,     color: PRIMARY, activeBg: '#ccfbf1' },
+  { path: '/user/health-services',  labelKey: 'services',     icon: medkitOutline,       activeIcon: medkit,       color: PRIMARY, activeBg: '#ccfbf1' },
+  { path: '/user/profile',          labelKey: 'profile',      icon: personOutline,       activeIcon: person,       color: PRIMARY, activeBg: '#ccfbf1' },
 ];
 
 const navGroups = [
@@ -377,7 +512,6 @@ const navGroups = [
     label: 'Health',
     items: [
       { path: '/user/health-records', label: 'Health Records', icon: documentTextOutline, activeIcon: documentText },
-      { path: '/user/vaccinations', label: 'Vaccinations', icon: shieldCheckmarkOutline, activeIcon: shieldCheckmark },
       { path: '/user/health-services', label: 'Health Services', icon: medkitOutline, activeIcon: medkit },
     ],
   },
@@ -415,23 +549,14 @@ const UserLayout = () => {
   const bottomNavItems = getBottomNavItems(t);
   const isGuest = !currentUser;
 
-  // Initialize vaccination reminder service
   useEffect(() => {
     if (currentUser) {
-      vaccinationReminderService.init();
       // Register for FCM remote push so notifications arrive even when closed
       pushNotificationService.register(currentUser.id);
-      console.log('[UserLayout] Vaccination reminder service initialized');
     }
-
-    return () => {
-      vaccinationReminderService.stop();
-      console.log('[UserLayout] Vaccination reminder service stopped');
-    };
   }, [currentUser]);
 
   const handleLogout = () => {
-    vaccinationReminderService.stop();
     userLogout();
     navigate('/login', { replace: true });
   };
@@ -445,30 +570,14 @@ const UserLayout = () => {
       {/* Side Menu */}
       <IonMenu ref={menuRef} contentId="user-main" type="overlay" style={{ '--width': '280px' }}>
         <IonHeader className="ion-no-border">
-          <IonToolbar
-            style={{
-              '--background': '#0f172a',
-              '--color': '#fff',
-              '--min-height': '80px',
-              '--border-color': 'transparent',
-            }}
-          >
+          <IonToolbar style={{ '--background': '#0f172a', '--color': '#fff', '--min-height': '80px', '--border-color': 'transparent', borderBottom: `3px solid ${PRIMARY}` }}>
             <div style={{ padding: '16px 16px 12px' }}>
               <div className="d-flex align-items-center gap-3">
-                <div
-                  className="d-flex align-items-center justify-content-center rounded-3 position-relative"
-                  style={{
-                    width: 42, height: 42,
-                    background: 'rgba(255,255,255,0.15)',
-                    border: '1.5px solid rgba(255,255,255,0.25)',
-                    borderRadius: 12,
-                  }}
-                >
+                <div className="d-flex align-items-center justify-content-center rounded-3 position-relative"
+                  style={{ width: 42, height: 42, background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.25)', borderRadius: 12 }}>
                   <HeartPulse size={22} color="#fff" />
-                  <span
-                    className="d-flex align-items-center justify-content-center rounded-circle position-absolute"
-                    style={{ width: 14, height: 14, backgroundColor: '#ef4444', border: '2px solid #1e40af', bottom: -3, right: -3 }}
-                  >
+                  <span className="d-flex align-items-center justify-content-center rounded-circle position-absolute"
+                    style={{ width: 14, height: 14, backgroundColor: '#ef4444', border: '2px solid #0f172a', bottom: -3, right: -3 }}>
                     <Plus size={8} color="#fff" strokeWidth={3} />
                   </span>
                 </div>
@@ -481,37 +590,18 @@ const UserLayout = () => {
           </IonToolbar>
         </IonHeader>
 
-        <IonContent
-          style={{
-            '--background': '#1e293b',
-          }}
-        >
+        <IonContent style={{ '--background': '#1e293b' }}>
           {/* User Card */}
           <div style={{ padding: '16px', paddingBottom: 0 }}>
-            <div
-              style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: 14,
-                padding: '14px 16px',
-              }}
-            >
+            <div style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: '14px 16px' }}>
               <div className="d-flex align-items-center gap-3">
-                <div
-                  className="d-flex align-items-center justify-content-center rounded-circle text-white fw-bold"
-                  style={{
-                    width: 44, height: 44,
-                    background: 'linear-gradient(135deg, #1d4ed8, #2563eb)',
-                    border: '2px solid rgba(96,165,250,0.4)',
-                    fontSize: 15,
-                    flexShrink: 0,
-                  }}
-                >
+                <div className="d-flex align-items-center justify-content-center rounded-circle fw-bold"
+                  style={{ width: 44, height: 44, background: `linear-gradient(135deg, ${PRIMARY}, #14b8a6)`, border: '2px solid rgba(20,184,166,0.4)', fontSize: 15, flexShrink: 0, color: '#fff' }}>
                   {initials}
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9', letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</div>
-                  <div style={{ fontSize: 11, color: '#60a5fa', fontWeight: 500, marginTop: 1 }}>
+                  <div style={{ fontSize: 11, color: '#5eead4', fontWeight: 500, marginTop: 1 }}>
                     {isGuest ? t('browseAsGuest') : `Purok ${currentUser?.purok || '—'}`}
                   </div>
                 </div>
@@ -522,35 +612,18 @@ const UserLayout = () => {
           {/* Navigation Groups */}
           {navGroups.map((group) => (
             <IonItemGroup key={group.label}>
-              <IonItemDivider
-                style={{
-                  '--background': 'transparent',
-                  '--color': '#475569',
-                  '--padding-start': '16px',
-                  '--inner-padding-end': '16px',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  letterSpacing: '0.08em',
-                  textTransform: 'uppercase',
-                  minHeight: 32,
-                  marginTop: 8,
-                }}
-              >
+              <IonItemDivider style={{ '--background': 'transparent', '--color': '#475569', '--padding-start': '16px', '--inner-padding-end': '16px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', minHeight: 32, marginTop: 8 }}>
                 <IonLabel>{group.label}</IonLabel>
               </IonItemDivider>
               {group.items.map((item) => {
                 const isActive = location.pathname === item.path;
                 return (
                   <IonMenuToggle key={item.path} autoHide={false}>
-                    <IonItem
-                      button
-                      onClick={() => { navigate(item.path); closeMenu(); }}
-                      lines="none"
-                      detail={false}
+                    <IonItem button onClick={() => { navigate(item.path); closeMenu(); }} lines="none" detail={false}
                       style={{
-                        '--background': isActive ? 'rgba(96,165,250,0.12)' : 'transparent',
+                        '--background': isActive ? 'rgba(20,184,166,0.15)' : 'transparent',
                         '--background-hover': 'rgba(255,255,255,0.05)',
-                        '--color': isActive ? '#93c5fd' : '#cbd5e1',
+                        '--color': isActive ? '#5eead4' : '#cbd5e1',
                         '--padding-start': '16px',
                         '--inner-padding-end': '16px',
                         '--min-height': '44px',
@@ -559,27 +632,11 @@ const UserLayout = () => {
                         fontWeight: isActive ? 600 : 400,
                         fontSize: 14,
                         '--border-color': 'transparent',
-                      }}
-                    >
-                      <IonIcon
-                        slot="start"
-                        icon={isActive ? item.activeIcon : item.icon}
-                        style={{
-                          color: isActive ? '#60a5fa' : '#64748b',
-                          fontSize: 20,
-                          marginRight: 12,
-                        }}
-                      />
+                      }}>
+                      <IonIcon slot="start" icon={isActive ? item.activeIcon : item.icon}
+                        style={{ color: isActive ? '#5eead4' : '#64748b', fontSize: 20, marginRight: 12 }} />
                       <IonLabel>{item.label}</IonLabel>
-                      {isActive && (
-                        <div
-                          slot="end"
-                          style={{
-                            width: 3, height: 18, borderRadius: 2,
-                            backgroundColor: '#60a5fa',
-                          }}
-                        />
-                      )}
+                      {isActive && <div slot="end" style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: '#5eead4' }} />}
                     </IonItem>
                   </IonMenuToggle>
                 );
@@ -590,40 +647,14 @@ const UserLayout = () => {
           {/* Sign In / Sign Out */}
           <div style={{ padding: '16px', marginTop: 8 }}>
             {isGuest ? (
-              <IonButton
-                expand="block"
-                fill="solid"
-                onClick={() => { closeMenu(); navigate('/login'); }}
-                style={{
-                  '--background': 'linear-gradient(135deg, #1d4ed8, #1e40af)',
-                  '--background-activated': 'linear-gradient(135deg, #1e40af, #1e3a8a)',
-                  '--border-radius': '10px',
-                  '--color': '#fff',
-                  '--box-shadow': '0 4px 12px rgba(29,78,216,0.3)',
-                  fontWeight: 600,
-                  fontSize: 14,
-                  height: 46,
-                }}
-              >
+              <IonButton expand="block" fill="solid" onClick={() => { closeMenu(); navigate('/login'); }}
+                style={{ '--background': `linear-gradient(135deg, ${PRIMARY}, #14b8a6)`, '--background-activated': `linear-gradient(135deg, #0f766e, ${PRIMARY})`, '--border-radius': '10px', '--color': '#fff', '--box-shadow': `0 4px 12px ${PRIMARY}44`, fontWeight: 600, fontSize: 14, height: 46 }}>
                 <IonIcon slot="start" icon={personOutline} style={{ color: '#fff' }} />
                 {t('signIn')}
               </IonButton>
             ) : (
-              <IonButton
-                expand="block"
-                fill="solid"
-                onClick={handleLogout}
-                style={{
-                  '--background': 'rgba(239,68,68,0.12)',
-                  '--background-activated': 'rgba(239,68,68,0.2)',
-                  '--border-radius': '10px',
-                  '--color': '#fca5a5',
-                  '--box-shadow': 'none',
-                  fontWeight: 600,
-                  fontSize: 14,
-                  height: 46,
-                }}
-              >
+              <IonButton expand="block" fill="solid" onClick={handleLogout}
+                style={{ '--background': 'rgba(239,68,68,0.12)', '--background-activated': 'rgba(239,68,68,0.2)', '--border-radius': '10px', '--color': '#fca5a5', '--box-shadow': 'none', fontWeight: 600, fontSize: 14, height: 46 }}>
                 <IonIcon slot="start" icon={logOutOutline} style={{ color: '#f87171' }} />
                 {t('signOut')}
               </IonButton>
@@ -638,30 +669,33 @@ const UserLayout = () => {
         <IonHeader className="ion-no-border">
           <IonToolbar
             style={{
-              '--background': 'linear-gradient(135deg, #1d4ed8 0%, #1e40af 50%, #1e3a8a 100%)',
-              '--color': '#fff',
+              '--background': '#ffffff',
+              '--color': '#1e293b',
               '--min-height': '0px',
+              '--border-width': '0',
               paddingTop: 'env(safe-area-inset-top, 0px)',
+              borderBottom: `3px solid ${PRIMARY}`,
+              boxShadow: '0 2px 8px rgba(13,148,136,0.10)',
             }}
           >
-            <div style={{ padding: '14px 16px 16px' }}>
+            <div style={{ padding: '12px 16px 14px' }}>
               <div className="d-flex align-items-center justify-content-between">
                 <div className="d-flex align-items-center gap-3">
                   <IonMenuButton
                     style={{
-                      '--color': '#fff',
+                      '--color': PRIMARY,
                       '--padding-start': '0',
                       '--padding-end': '0',
-                      width: 40, height: 40,
-                      '--background-hover': 'rgba(255,255,255,0.12)',
+                      width: 38, height: 38,
+                      '--background-hover': '#f0fdfa',
                       '--border-radius': '10px',
                     }}
                   />
                   <div>
-                    <div style={{ fontSize: 13, color: 'rgba(147,197,253,0.95)', fontWeight: 500 }}>
-                      {getGreeting(t)} 👋
+                    <div style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>
+                      {getGreeting(t)}
                     </div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: '#fff', letterSpacing: '-0.02em', marginTop: 1 }}>
+                    <div style={{ fontSize: 17, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em', marginTop: 1 }}>
                       {displayName}
                     </div>
                   </div>
@@ -670,30 +704,28 @@ const UserLayout = () => {
                   <button
                     onClick={toggleLanguage}
                     style={{
-                      background: 'rgba(255,255,255,0.15)',
-                      border: '1.5px solid rgba(255,255,255,0.25)',
-                      borderRadius: 10,
-                      padding: '6px 10px',
-                      color: '#fff',
-                      fontSize: 13,
+                      background: '#f0fdfa',
+                      border: `1.5px solid #99f6e4`,
+                      borderRadius: 8,
+                      padding: '5px 9px',
+                      color: PRIMARY,
+                      fontSize: 12,
                       fontWeight: 600,
                       cursor: 'pointer',
-                      transition: 'all 0.2s',
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.25)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
                   >
                     {language === 'en' ? '🇵🇭 TL' : '🇺🇸 EN'}
                   </button>
-                  <UserNotificationBell navigate={navigate} />
+                  <UserNotificationBell navigate={navigate} currentUserId={currentUser?.id} currentUserName={currentUser?.full_name} />
                   <div
-                    className="d-flex align-items-center justify-content-center rounded-circle text-white fw-bold"
+                    className="d-flex align-items-center justify-content-center rounded-circle fw-bold"
                     style={{
-                      width: 42, height: 42,
-                      background: 'linear-gradient(145deg, rgba(255,255,255,0.25), rgba(255,255,255,0.1))',
-                      border: '2px solid rgba(255,255,255,0.3)',
-                      fontSize: 15,
+                      width: 38, height: 38,
+                      background: `linear-gradient(135deg, ${PRIMARY}, #14b8a6)`,
+                      color: '#fff',
+                      fontSize: 14,
                       cursor: 'pointer',
+                      boxShadow: `0 2px 8px ${PRIMARY}44`,
                     }}
                     onClick={() => navigate('/user/profile')}
                   >
@@ -707,11 +739,10 @@ const UserLayout = () => {
 
         {/* Content */}
         <IonContent
-          style={{
-            '--background': '#eff6ff',
-          }}
+          scrollY
+          style={{ '--background': '#f8fafc' }}
         >
-          <div style={{ padding: 16, paddingBottom: 100 }}>
+          <div style={{ padding: 16, paddingBottom: 24 }}>
             <Outlet />
           </div>
         </IonContent>
@@ -727,6 +758,14 @@ const UserLayout = () => {
             @keyframes bnav-label-in {
               from { opacity: 0; transform: translateY(4px); }
               to   { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes pulse-ring {
+              0%, 100% { transform: translateX(-50%) scale(1); opacity: 0.6; }
+              50% { transform: translateX(-50%) scale(1.15); opacity: 0.3; }
+            }
+            @keyframes bounce-badge {
+              0%, 100% { transform: scale(1) translateY(0); }
+              50% { transform: scale(1.1) translateY(-2px); }
             }
             .bnav-btn {
               flex: 1; display: flex; flex-direction: column;
@@ -759,41 +798,96 @@ const UserLayout = () => {
           `}</style>
           <div style={{
             backgroundColor: '#ffffff',
-            borderRadius: '24px 24px 0 0',
-            boxShadow: '0 -6px 32px rgba(0,0,0,0.12)',
+            borderRadius: '20px 20px 0 0',
+            boxShadow: '0 -4px 20px rgba(13,148,136,0.08)',
             paddingBottom: 'env(safe-area-inset-bottom, 0px)',
             display: 'flex',
-            borderTop: '1px solid #f1f5f9',
+            borderTop: `2px solid #f0fdfa`,
           }}>
-            {bottomNavItems.map((item) => {
+            {bottomNavItems.map((item, index) => {
               const isActive = location.pathname === item.path;
+              const isAppointments = index === 2; // Appointments is now the 3rd item (index 2, center)
               return (
                 <button
                   key={item.path}
-                  className={`bnav-btn${isActive ? ' active' : ''}`}
+                  className={`bnav-btn${isActive ? ' active' : ''}${isAppointments ? ' bnav-appointments' : ''}`}
                   onClick={() => navigate(item.path)}
+                  style={isAppointments ? { marginTop: -24, position: 'relative', zIndex: 10 } : {}}
                 >
+                  {isAppointments && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: 72,
+                      height: 72,
+                      borderRadius: '50%',
+                      background: 'radial-gradient(circle, rgba(13,148,136,0.15) 0%, transparent 70%)',
+                      animation: 'pulse-ring 2s ease-in-out infinite',
+                    }} />
+                  )}
                   <div
                     className="bnav-pill"
                     style={{
-                      background: isActive ? item.color : '#f8fafc',
-                      transform: isActive ? 'scale(1.05)' : 'scale(1)',
+                      background: isAppointments 
+                        ? 'linear-gradient(135deg, #14b8a6 0%, #0d9488 50%, #0f766e 100%)'
+                        : isActive ? item.color : '#f8fafc',
+                      transform: isActive && !isAppointments ? 'scale(1.05)' : 'scale(1)',
+                      transition: 'all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                      ...(isAppointments && { 
+                        width: 68, 
+                        height: 68, 
+                        borderRadius: '50%', 
+                        boxShadow: '0 12px 32px rgba(13,148,136,0.4), 0 6px 16px rgba(0,0,0,0.2), inset 0 2px 4px rgba(255,255,255,0.3)',
+                        border: '4px solid #ffffff',
+                        position: 'relative',
+                      }),
                     }}
                   >
+                    {isAppointments && (
+                      <div style={{
+                        position: 'absolute',
+                        top: -2,
+                        right: -2,
+                        width: 20,
+                        height: 20,
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                        border: '2px solid #ffffff',
+                        boxShadow: '0 2px 8px rgba(239,68,68,0.4)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: '#fff',
+                        animation: 'bounce-badge 1s ease-in-out infinite',
+                      }}>
+                        <Plus size={12} strokeWidth={3} />
+                      </div>
+                    )}
                     <IonIcon
                       icon={isActive ? item.activeIcon : item.icon}
                       className="bnav-icon"
                       style={{
-                        fontSize: 24,
-                        color: isActive ? '#ffffff' : item.color,
-                        opacity: isActive ? 1 : 0.85,
-                        transform: isActive ? 'scale(1.1)' : 'scale(1)',
+                        fontSize: isAppointments ? 34 : 24,
+                        color: isAppointments ? '#ffffff' : isActive ? '#ffffff' : item.color,
+                        opacity: 1,
+                        transform: isActive && !isAppointments ? 'scale(1.1)' : 'scale(1)',
+                        filter: isAppointments ? 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' : 'none',
                       }}
                     />
                   </div>
                   <span
                     className="bnav-label"
-                    style={{ color: isActive ? item.color : '#64748b', opacity: isActive ? 1 : 0.9 }}
+                    style={{ 
+                      color: isActive || isAppointments ? item.color : '#64748b', 
+                      opacity: isActive || isAppointments ? 1 : 0.9,
+                      fontWeight: isAppointments ? 800 : isActive ? 700 : 600,
+                      fontSize: isAppointments ? 10 : 11,
+                      letterSpacing: isAppointments ? '0.03em' : '0.02em',
+                    }}
                   >
                     {t(item.labelKey)}
                   </span>

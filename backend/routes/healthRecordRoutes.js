@@ -19,15 +19,14 @@ router.get('/search', auth, async (req, res) => {
       return res.json([]);
     }
 
-    const searchTerm = `%${query}%`;
-    const [rows] = await db.query(
-      `SELECT id, patient as patient_name, type as record_type, diagnosis, date, doctor
-       FROM health_records
-       WHERE (patient LIKE ? OR diagnosis LIKE ? OR doctor LIKE ?)
-         AND deleted_at IS NULL
-       LIMIT 10`,
-      [searchTerm, searchTerm, searchTerm]
-    );
+    const like = `%${query}%`;
+    const { data: rows, error } = await db
+      .from('health_records')
+      .select('id, patient_name:patient, record_type:type, diagnosis, date, doctor')
+      .is('deleted_at', null)
+      .or(`patient.ilike.${like},diagnosis.ilike.${like},doctor.ilike.${like}`)
+      .limit(10);
+    if (error) throw error;
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -52,26 +51,32 @@ router.post('/', auth, async (req, res) => {
     const data = {};
     columns.forEach((col) => { if (req.body[col] !== undefined) data[col] = req.body[col]; });
 
-    const keys = Object.keys(data).map((k) => `\`${k}\``).join(', ');
-    const placeholders = Object.keys(data).map(() => '?').join(', ');
-    const [result] = await db.query(
-      `INSERT INTO \`health_records\` (${keys}) VALUES (${placeholders})`,
-      Object.values(data)
-    );
+    const { data: result, error: insertError } = await db
+      .from('health_records')
+      .insert(data)
+      .select('id')
+      .single();
+    if (insertError) throw insertError;
 
     // Create notification for the user
     const patient = req.body.patient;
-    const [users] = await db.query('SELECT id FROM users WHERE full_name = ? LIMIT 1', [patient]);
+    const { data: users } = await db
+      .from('users')
+      .select('id')
+      .eq('full_name', patient)
+      .limit(1);
     
-    if (users.length > 0) {
-      const userId = users[0].id;
+    if (users && users.length > 0) {
       const title = `New Health Record: ${req.body.type}`;
       const message = `A new ${req.body.type.toLowerCase()} record has been added for you. Diagnosis: ${req.body.diagnosis}`;
       
-      await db.query(
-        `INSERT INTO notifications (type, title, message, recipient, priority) VALUES (?, ?, ?, ?, ?)`,
-        ['health_record', title, message, patient, 'normal']
-      );
+      await db.from('notifications').insert({
+        type: 'health_record',
+        title,
+        message,
+        recipient: patient,
+        priority: 'normal',
+      });
     }
 
     if (global.io) {
@@ -79,7 +84,7 @@ router.post('/', auth, async (req, res) => {
         type: 'health-record',
         action: 'created',
         data: {
-          id: result.insertId,
+          id: result.id,
           patient: req.body.patient,
           type: req.body.type,
           diagnosis: req.body.diagnosis,
@@ -89,7 +94,7 @@ router.post('/', auth, async (req, res) => {
       });
     }
 
-    res.status(201).json({ ok: true, id: result.insertId });
+    res.status(201).json({ ok: true, id: result.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -4,8 +4,8 @@ import { useUserAuth } from '../../context/UserAuthContext';
 import { userApi } from '../../context/UserAuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import {
-  Calendar, FileText, Syringe, Heart, ChevronRight,
-  Phone, Activity, ShieldCheck, Megaphone, Clock, User,
+  Calendar, FileText, Heart, ChevronRight,
+  Phone, Activity, Megaphone, Clock, User,
 } from 'lucide-react';
 
 
@@ -13,8 +13,8 @@ const S = {
   /* ── Welcome card ── */
   welcome: {
     borderRadius: 20,
-    background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 55%, #2563eb 100%)',
-    boxShadow: '0 8px 32px rgba(29,78,216,0.28)',
+    background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f172a 100%)',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
     padding: '20px',
     marginBottom: 16,
     overflow: 'hidden',
@@ -23,32 +23,32 @@ const S = {
   welcomeOrb1: {
     position: 'absolute', top: -40, right: -40,
     width: 140, height: 140, borderRadius: '50%',
-    background: 'rgba(255,255,255,0.06)', pointerEvents: 'none',
+    background: 'rgba(13,148,136,0.08)', pointerEvents: 'none',
   },
   welcomeOrb2: {
     position: 'absolute', bottom: -20, left: -20,
     width: 100, height: 100, borderRadius: '50%',
-    background: 'rgba(255,255,255,0.04)', pointerEvents: 'none',
+    background: 'rgba(13,148,136,0.05)', pointerEvents: 'none',
   },
   avatarWrap: {
     width: 52, height: 52, borderRadius: 16,
-    background: 'rgba(255,255,255,0.15)',
-    border: '1.5px solid rgba(255,255,255,0.25)',
+    background: 'linear-gradient(135deg, #0d9488, #14b8a6)',
+    boxShadow: '0 4px 14px rgba(13,148,136,0.4)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
   welcomeBottom: {
     marginTop: 16,
-    borderTop: '1px solid rgba(255,255,255,0.1)',
+    borderTop: '1px solid rgba(255,255,255,0.07)',
     display: 'flex', gap: 0,
   },
   statPill: {
     flex: 1, padding: '12px 8px', textAlign: 'center',
-    borderRight: '1px solid rgba(255,255,255,0.1)',
+    borderRight: '1px solid rgba(255,255,255,0.07)',
     cursor: 'default',
   },
   statNum: { fontSize: 20, fontWeight: 800, color: '#fff', lineHeight: 1 },
-  statLabel: { fontSize: 10, color: 'rgba(147,197,253,0.85)', marginTop: 3, fontWeight: 500, letterSpacing: '0.03em' },
+  statLabel: { fontSize: 10, color: 'rgba(94,234,212,0.8)', marginTop: 3, fontWeight: 500, letterSpacing: '0.03em' },
 
   /* ── Quick actions ── */
   actionsGrid: {
@@ -78,7 +78,7 @@ const S = {
     marginBottom: 12,
   },
   sectionTitle: { fontSize: 15, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em' },
-  seeAll: { fontSize: 12, fontWeight: 700, color: '#2563eb', cursor: 'pointer', letterSpacing: '0.01em' },
+  seeAll: { fontSize: 12, fontWeight: 700, color: '#0d9488', cursor: 'pointer', letterSpacing: '0.01em' },
 
   /* ── Card shell ── */
   card: {
@@ -97,33 +97,13 @@ const S = {
   },
   aptIcon: (confirmed) => ({
     width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-    background: confirmed ? '#dbeafe' : '#fef3c7',
+    background: confirmed ? '#ccfbf1' : '#fef3c7',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   }),
   aptBadge: (confirmed) => ({
     padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700,
-    background: confirmed ? '#dbeafe' : '#fef3c7',
-    color: confirmed ? '#1e40af' : '#92400e',
-    letterSpacing: '0.02em', textTransform: 'capitalize', whiteSpace: 'nowrap',
-  }),
-
-  /* ── Vaccine row ── */
-  vaxRow: (due) => ({
-    display: 'flex', alignItems: 'center', gap: 12,
-    padding: '12px 14px', borderRadius: 14,
-    background: due ? '#fffbeb' : '#f8fafc',
-    marginBottom: 8,
-    border: due ? '1px solid #fde68a' : '1px solid transparent',
-  }),
-  vaxIcon: (due) => ({
-    width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-    background: due ? '#fde68a' : '#ede9fe',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  }),
-  vaxBadge: (due) => ({
-    padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 700,
-    background: due ? '#fef3c7' : '#ede9fe',
-    color: due ? '#b45309' : '#6d28d9',
+    background: confirmed ? '#ccfbf1' : '#fef3c7',
+    color: confirmed ? '#0f766e' : '#92400e',
     letterSpacing: '0.02em', textTransform: 'capitalize', whiteSpace: 'nowrap',
   }),
 };
@@ -134,8 +114,6 @@ const UserDashboard = () => {
   const { t } = useLanguage();
   const [appointments, setAppointments] = useState([]);
   const [apptLoading, setApptLoading] = useState(true);
-  const [vaccines, setVaccines] = useState([]);
-  const [vaxLoading, setVaxLoading] = useState(true);
   const [announcements, setAnnouncements] = useState([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
 
@@ -152,26 +130,9 @@ const UserDashboard = () => {
         .then((data) => setAppointments(Array.isArray(data) ? data.slice(0, 3) : []))
         .catch(() => setAppointments([]))
         .finally(() => setApptLoading(false));
-
-      userApi.get('/user/vaccinations')
-        .then((data) => {
-          const today = new Date(); today.setHours(0, 0, 0, 0);
-          const upcoming = (Array.isArray(data) ? data : [])
-            .filter((v) => v.next_due && v.status !== 'completed')
-            .sort((a, b) => new Date(a.next_due) - new Date(b.next_due))
-            .slice(0, 3)
-            .map((v) => {
-              const due = new Date(String(v.next_due).slice(0, 10) + 'T00:00:00');
-              return { ...v, isDue: due <= today || v.status === 'missed' };
-            });
-          setVaccines(upcoming);
-        })
-        .catch(() => setVaccines([]))
-        .finally(() => setVaxLoading(false));
     } else {
-      // Guest user - no appointments or vaccinations
+      // Guest user - no appointments
       setApptLoading(false);
-      setVaxLoading(false);
     }
   }, [currentUser]);
 
@@ -186,9 +147,9 @@ const UserDashboard = () => {
   const dayNum = now.getDate();
 
   const quickActions = [
-    { icon: <Calendar size={22} color="#1d4ed8" />, labelKey: 'book', path: '/user/appointments', bg: 'linear-gradient(135deg,#dbeafe,#bfdbfe)' },
+    { icon: <Calendar size={22} color="#0d9488" />, labelKey: 'book', path: '/user/appointments', bg: 'linear-gradient(135deg,#ccfbf1,#99f6e4)' },
     { icon: <FileText size={22} color="#0369a1" />, labelKey: 'records', path: '/user/health-records', bg: 'linear-gradient(135deg,#e0f2fe,#bae6fd)' },
-    { icon: <Syringe size={22} color="#7c3aed" />, labelKey: 'vaccinations', path: '/user/vaccinations', bg: 'linear-gradient(135deg,#ede9fe,#ddd6fe)' },
+    { icon: <Activity size={22} color="#0f172a" />, labelKey: 'services', path: '/user/health-services', bg: 'linear-gradient(135deg,#f1f5f9,#e2e8f0)' },
     { icon: <Megaphone size={22} color="#0891b2" />, labelKey: 'news', path: '/user/announcements', bg: 'linear-gradient(135deg,#cffafe,#a5f3fc)' },
   ];
 
@@ -202,24 +163,26 @@ const UserDashboard = () => {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, position: 'relative', zIndex: 1 }}>
           <div style={S.avatarWrap}>
-            <Heart size={26} color="#fff" strokeWidth={2} />
+            <span style={{ fontSize: 18, fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>
+              {firstName ? firstName.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() : 'B'}
+            </span>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: 'rgba(147,197,253,0.9)', fontWeight: 600, letterSpacing: '0.04em', marginBottom: 3 }}>
+            <div style={{ fontSize: 11, color: '#5eead4', fontWeight: 600, letterSpacing: '0.04em', marginBottom: 3 }}>
               {greeting} {greetEmoji}
             </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
               {firstName}
             </div>
-            <div style={{ fontSize: 12, color: 'rgba(191,219,254,0.85)', marginTop: 4 }}>
+            <div style={{ fontSize: 12, color: 'rgba(148,163,184,0.9)', marginTop: 4 }}>
               {t('stayHealthyStaySafe')}
             </div>
           </div>
           <div style={{
-            background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)',
+            background: 'rgba(13,148,136,0.2)', border: '1px solid rgba(13,148,136,0.35)',
             borderRadius: 10, padding: '6px 10px', textAlign: 'center', flexShrink: 0,
           }}>
-            <div style={{ fontSize: 11, fontWeight: 800, color: '#fff' }}>{monthShort}</div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#5eead4' }}>{monthShort}</div>
             <div style={{ fontSize: 20, fontWeight: 900, color: '#fff', lineHeight: 1 }}>{dayNum}</div>
           </div>
         </div>
@@ -262,7 +225,7 @@ const UserDashboard = () => {
           <button
             onClick={() => navigate('/login')}
             style={{
-              background: 'linear-gradient(135deg, #1d4ed8, #1e40af)',
+              background: 'linear-gradient(135deg, #0d9488, #0f766e)',
               border: 'none',
               borderRadius: 10,
               padding: '10px 20px',
@@ -459,8 +422,8 @@ const UserDashboard = () => {
       <div style={S.card}>
         <div style={S.sectionHead}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Calendar size={15} color="#1d4ed8" />
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#ccfbf1', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Calendar size={15} color="#0d9488" />
             </div>
             <span style={S.sectionTitle}>{t('upcomingAppointments')}</span>
           </div>
@@ -475,9 +438,9 @@ const UserDashboard = () => {
         {appointments.map((apt) => {
           const confirmed = apt.status === 'confirmed';
           return (
-            <div key={apt.id} style={{ ...S.aptRow, borderLeftColor: confirmed ? '#1d4ed8' : '#f59e0b', cursor: 'pointer' }} onClick={() => navigate('/user/appointment-history')}>
+            <div key={apt.id} style={{ ...S.aptRow, borderLeftColor: confirmed ? '#0d9488' : '#f59e0b', cursor: 'pointer' }} onClick={() => navigate('/user/appointment-history')}>
               <div style={S.aptIcon(confirmed)}>
-                <Calendar size={20} color={confirmed ? '#1d4ed8' : '#b45309'} />
+                <Calendar size={20} color={confirmed ? '#0d9488' : '#b45309'} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -489,43 +452,6 @@ const UserDashboard = () => {
                 </div>
               </div>
               <span style={S.aptBadge(confirmed)}>{apt.status || 'pending'}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ── Vaccination Reminders ── */}
-      <div style={S.card}>
-        <div style={S.sectionHead}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: '#ede9fe', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ShieldCheck size={15} color="#7c3aed" />
-            </div>
-            <span style={S.sectionTitle}>{t('vaccinationReminders')}</span>
-          </div>
-          <span style={S.seeAll} onClick={() => navigate('/user/vaccinations')}>{t('seeAll')} →</span>
-        </div>
-
-        {vaxLoading ? (
-          <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>Loading...</div>
-        ) : vaccines.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '16px 0', color: '#94a3b8', fontSize: 13 }}>{t('noVaccinationReminders')}</div>
-        ) : null}
-        {vaccines.map((vax) => {
-          const due = vax.isDue;
-          const dueStr = new Date(String(vax.next_due).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-          return (
-            <div key={vax.id} style={{ ...S.vaxRow(due), cursor: 'pointer' }} onClick={() => navigate('/user/vaccinations')}>
-              <div style={S.vaxIcon(due)}>
-                <Syringe size={20} color={due ? '#b45309' : '#7c3aed'} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {vax.vaccine}{vax.dose ? ` · ${vax.dose}` : ''}
-                </div>
-                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>Due: {dueStr}</div>
-              </div>
-              <span style={S.vaxBadge(due)}>{due ? '⚠ Due' : 'Scheduled'}</span>
             </div>
           );
         })}

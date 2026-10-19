@@ -3,6 +3,7 @@ import useCrud from '../../hooks/useCrud';
 import api from '../../utils/api';
 import { socket } from '../../config/socket';
 import { supabase } from '../../config/supabase';
+import { appointmentCode } from '../../utils/recordCodes';
 import { Card, Row, Col, Form, InputGroup, Button, Table, Modal, Toast, ToastContainer } from 'react-bootstrap';
 import { Search, Plus, Check, X, Calendar, Clock, User, Bell, List, CalendarDays, ChevronLeft, ChevronRight, Activity, FileText, ClipboardList, CalendarClock, AlertCircle, CheckCircle2, MessageSquare } from 'lucide-react';
 
@@ -123,7 +124,7 @@ const Appointments = () => {
 
   const filtered = useMemo(() => items.filter((a) => {
     const matchStatus = filter === 'all' || a.status === filter;
-    const matchQuery  = !query || a.name.toLowerCase().includes(query.toLowerCase()) || a.service.toLowerCase().includes(query.toLowerCase());
+    const matchQuery  = !query || appointmentCode(a).toLowerCase().includes(query.toLowerCase()) || a.name.toLowerCase().includes(query.toLowerCase()) || a.service.toLowerCase().includes(query.toLowerCase());
     return matchStatus && matchQuery;
   }), [items, filter, query]);
 
@@ -269,7 +270,7 @@ const Appointments = () => {
               
               <InputGroup size="sm" className="flex-grow-1" style={{ maxWidth: 240, minWidth: 140 }}>
                 <InputGroup.Text className="bg-light border-end-0"><Search size={14} color="#9ca3af" /></InputGroup.Text>
-                <Form.Control className="bg-light border-start-0" placeholder="Search..." value={query} onChange={(e) => setQuery(e.target.value)} style={{ fontSize: 13 }} />
+                <Form.Control className="bg-light border-start-0" placeholder="Search APT no., patient, service..." value={query} onChange={(e) => setQuery(e.target.value)} style={{ fontSize: 13 }} />
               </InputGroup>
               <Button size="sm" onClick={() => setShowAdd(true)} className="d-flex align-items-center gap-1 border-0 flex-shrink-0"
                 style={{ backgroundColor: '#16a34a', fontWeight: 500, fontSize: 12 }}>
@@ -389,7 +390,8 @@ const Appointments = () => {
             <Table hover className="mb-0 align-middle">
               <thead style={{ backgroundColor: '#f9fafb' }}>
                 <tr style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <th className="px-4 py-3">Patient</th>
+                  <th className="px-4 py-3">Appointment No.</th>
+                  <th className="py-3">Patient</th>
                   <th className="py-3">Service</th>
                   <th className="py-3">Date</th>
                   <th className="py-3">Time</th>
@@ -399,7 +401,7 @@ const Appointments = () => {
               </thead>
               <tbody style={{ fontSize: 13 }}>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={6} className="text-center py-5" style={{ color: '#9ca3af' }}>No appointments found.</td></tr>
+                  <tr><td colSpan={7} className="text-center py-5" style={{ color: '#9ca3af' }}>No appointments found.</td></tr>
                 )}
                 {filtered.map((a) => {
                   const isNew = newAppointments.includes(a.id);
@@ -415,6 +417,11 @@ const Appointments = () => {
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = isNew ? '#fde68a' : '#f0fff4'}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isNew ? '#fef3c7' : ''}>
                     <td className="px-4 py-3">
+                      <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace', fontSize: 11, fontWeight: 700, color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 6, padding: '1px 6px', whiteSpace: 'nowrap' }}>
+                        {appointmentCode(a)}
+                      </span>
+                    </td>
+                    <td className="py-3">
                       <div className="d-flex align-items-center gap-2">
                         <div className="d-flex align-items-center justify-content-center rounded-circle text-white fw-bold"
                           style={{ width: 32, height: 32, backgroundColor: '#16a34a', fontSize: 11 }}>
@@ -422,17 +429,13 @@ const Appointments = () => {
                         </div>
                         <span className="fw-semibold" style={{ color: '#111827' }}>{a.name}</span>
                         {isNew && (
-                          <span style={{
-                            backgroundColor: '#ef4444',
-                            color: '#fff',
-                            fontSize: 9,
-                            fontWeight: 700,
-                            padding: '2px 6px',
-                            borderRadius: 4,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.05em',
-                          }}>
+                          <span style={{ backgroundColor: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             NEW
+                          </span>
+                        )}
+                        {a.notes && a.notes.includes('[NOTE from') && (
+                          <span style={{ backgroundColor: '#dbeafe', color: '#1e40af', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <MessageSquare size={9} /> NOTE
                           </span>
                         )}
                       </div>
@@ -535,7 +538,9 @@ const Appointments = () => {
                     <span style={{ fontSize: 14, color: '#6b7280' }}>{showView.service}</span>
                   </div>
                 </div>
-                <div className="ms-auto">
+                <div className="ms-auto text-end">
+                  <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Appointment No.</div>
+                  <div className="fw-bold mb-2" style={{ fontSize: 13, color: '#047857', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }}>{appointmentCode(showView)}</div>
                   <StatusPill status={showView.status} />
                 </div>
               </div>
@@ -581,34 +586,50 @@ const Appointments = () => {
                     <ClipboardList size={18} color="#f59e0b" /> Notes
                   </div>
                   {showView.notes ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 120 }}>
-                      {showView.notes.split('\n\n').map((block, i) => {
-                        const isUserNote = block.includes('[NOTE from');
-                        const isRescheduleNote = block.includes('[RESCHEDULED');
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {showView.notes.split('\n\n').filter(Boolean).map((block, i) => {
+                        const isUserNote       = block.includes('[NOTE from');
+                        const isRescheduleNote = /\[RESCHEDULED/i.test(block);
+                        // Extract sender name from [NOTE from Name] or [RESCHEDULED by Name]
+                        const noteMatch  = block.match(/\[NOTE from ([^\]]+)\]/i);
+                        const reschedMatch = block.match(/\[RESCHEDULED by ([^\]]+)\]/i);
+                        const senderName = noteMatch?.[1] || reschedMatch?.[1] || '';
+                        // Clean message — strip the prefix marker
+                        const cleanMsg = block
+                          .replace(/\[NOTE from [^\]]+\]\s*/i, '')
+                          .replace(/\[RESCHEDULED by [^\]]+\]\s*/i, '')
+                          .trim();
                         return (
-                          <div key={i} className="p-3 rounded-3" style={{
-                            backgroundColor: isUserNote ? '#dbeafe' : isRescheduleNote ? '#fef3c7' : '#f8fafc',
+                          <div key={i} className="rounded-3 overflow-hidden" style={{
                             border: `1px solid ${isUserNote ? '#93c5fd' : isRescheduleNote ? '#fcd34d' : '#e2e8f0'}`,
-                            color: isUserNote ? '#1e40af' : isRescheduleNote ? '#92400e' : '#374151',
-                            fontSize: 13,
                           }}>
-                            {isUserNote && (
-                              <div className="d-flex align-items-center gap-1 mb-1" style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#3b82f6' }}>
-                                <MessageSquare size={10} /> User Note
-                              </div>
-                            )}
-                            {isRescheduleNote && (
-                              <div className="d-flex align-items-center gap-1 mb-1" style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: '#d97706' }}>
-                                <CalendarClock size={10} /> Reschedule Note
-                              </div>
-                            )}
-                            {block}
+                            {/* Label bar */}
+                            <div className="d-flex align-items-center gap-2 px-3 py-2" style={{
+                              backgroundColor: isUserNote ? '#eff6ff' : isRescheduleNote ? '#fefce8' : '#f8fafc',
+                              borderBottom: `1px solid ${isUserNote ? '#93c5fd' : isRescheduleNote ? '#fcd34d' : '#e2e8f0'}`,
+                            }}>
+                              {isUserNote
+                                ? <><MessageSquare size={12} color="#3b82f6" /><span style={{ fontSize: 11, fontWeight: 700, color: '#1e40af' }}>Note from Patient{senderName ? ` (${senderName})` : ''}</span></>
+                                : isRescheduleNote
+                                ? <><CalendarClock size={12} color="#d97706" /><span style={{ fontSize: 11, fontWeight: 700, color: '#92400e' }}>Rescheduled by Admin{senderName ? ` (${senderName})` : ''}</span></>
+                                : <><ClipboardList size={12} color="#6b7280" /><span style={{ fontSize: 11, fontWeight: 700, color: '#6b7280' }}>Note</span></>
+                              }
+                            </div>
+                            {/* Message body */}
+                            <div className="px-3 py-2" style={{
+                              backgroundColor: isUserNote ? '#dbeafe22' : isRescheduleNote ? '#fef9c322' : '#fff',
+                              fontSize: 13,
+                              color: isUserNote ? '#1e40af' : isRescheduleNote ? '#92400e' : '#374151',
+                              lineHeight: 1.55,
+                            }}>
+                              {cleanMsg || block}
+                            </div>
                           </div>
                         );
                       })}
                     </div>
                   ) : (
-                    <div className="p-3 rounded-3" style={{ backgroundColor: '#f8fafc', color: '#9ca3af', fontSize: 14, minHeight: 120, fontStyle: 'italic' }}>
+                    <div className="p-3 rounded-3" style={{ backgroundColor: '#f8fafc', color: '#9ca3af', fontSize: 14, minHeight: 80, fontStyle: 'italic' }}>
                       No notes provided
                     </div>
                   )}

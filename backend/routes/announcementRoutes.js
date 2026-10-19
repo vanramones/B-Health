@@ -34,14 +34,7 @@ router.post('/', auth, async (req, res) => {
         pinned,
       });
     }
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// PUT — update announcement with Socket.io emission
-router.put('/:id', auth, async (req, res) => {
-  try {
+  } catch (err) { a
     const { id } = req.params;
     const { title, category, body, author, audience, publish_date, event_date, status, pinned } = req.body;
     
@@ -49,8 +42,8 @@ router.put('/:id', auth, async (req, res) => {
     const data = {};
     columns.forEach((col) => { if (req.body[col] !== undefined) data[col] = req.body[col]; });
     
-    const sets = Object.keys(data).map((k) => `${k} = ?`).join(', ');
-    await db.query(`UPDATE announcements SET ${sets} WHERE id = ?`, [...Object.values(data), id]);
+    const { error } = await db.from('announcements').update(data).eq('id', id);
+    if (error) throw error;
     
     if (global.io) {
       global.io.emit('announcement-updated', {
@@ -77,7 +70,8 @@ router.put('/:id', auth, async (req, res) => {
 router.delete('/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
-    await db.query('DELETE FROM announcements WHERE id = ?', [id]);
+    const { error } = await db.from('announcements').delete().eq('id', id);
+    if (error) throw error;
     
     if (global.io) {
       global.io.emit('announcement-deleted', { id });

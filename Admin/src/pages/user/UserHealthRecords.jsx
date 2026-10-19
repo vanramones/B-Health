@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, Row, Col, Button, Badge, Form, Modal, Nav } from 'react-bootstrap';
 import {
-  FileText, Calendar, User, Download, Eye, Search, RefreshCw,
+  FileText, Calendar, User, Eye, Search, RefreshCw,
   Stethoscope, FlaskConical, Pill, Baby, ClipboardList,
 } from 'lucide-react';
 import { userApi } from '../../context/UserAuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 
 const typeConfig = {
-  Consultation: { icon: <Stethoscope size={16} />, bg: '#dbeafe', color: '#1e40af' },
-  'Lab Result': { icon: <FlaskConical size={16} />, bg: '#dbeafe', color: '#1d4ed8' },
+  Consultation: { icon: <Stethoscope size={16} />, bg: '#f1f5f9', color: '#0f172a' },
+  'Lab Result': { icon: <FlaskConical size={16} />, bg: '#f1f5f9', color: '#0f172a' },
   Prenatal: { icon: <Baby size={16} />, bg: '#fce7f3', color: '#be185d' },
   Prescription: { icon: <Pill size={16} />, bg: '#fef3c7', color: '#b45309' },
   Vaccination: { icon: <ClipboardList size={16} />, bg: '#ede9fe', color: '#7c3aed' },
@@ -75,21 +75,21 @@ const UserHealthRecords = () => {
       {/* Notifications Alert */}
       {healthRecordNotifications.length > 0 && (
         <Card className="border rounded-4 mb-4" style={{ 
-          backgroundColor: '#eff6ff', 
-          borderColor: '#bfdbfe',
+          backgroundColor: '#f1f5f9', 
+          borderColor: '#cbd5e1',
           boxShadow: '0 1px 4px rgba(0,0,0,0.06)' 
         }}>
           <Card.Body className="p-3">
-            <div style={{ fontSize: 13, color: '#1d4ed8', fontWeight: 500 }}>
+            <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 500 }}>
               📢 You have {healthRecordNotifications.length} new health record notification{healthRecordNotifications.length !== 1 ? 's' : ''}
             </div>
             {healthRecordNotifications.slice(0, 3).map((notif) => (
               <div key={notif.id} style={{ 
                 fontSize: 12, 
-                color: '#1e40af', 
+                color: '#0f172a', 
                 marginTop: 8,
                 paddingLeft: 8,
-                borderLeft: '3px solid #3b82f6'
+                borderLeft: '3px solid #0f172a'
               }}>
                 <strong>{notif.title}</strong>
                 <div style={{ color: '#6b7280', marginTop: 2 }}>{notif.message}</div>
@@ -137,8 +137,8 @@ const UserHealthRecords = () => {
                       onClick={() => setFilter(type)}
                       className="d-flex align-items-center gap-1 border-0"
                       style={{
-                        backgroundColor: filter === type ? (tc?.bg || '#dbeafe') : '#f3f4f6',
-                        color: filter === type ? (tc?.color || '#1d4ed8') : '#374151',
+                        backgroundColor: filter === type ? (tc?.bg || '#f1f5f9') : '#f3f4f6',
+                        color: filter === type ? (tc?.color || '#0f172a') : '#374151',
                         fontWeight: 600,
                         fontSize: 12,
                       }}
@@ -237,15 +237,6 @@ const UserHealthRecords = () => {
                         >
                           <Eye size={14} /> View
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="light"
-                          className="d-flex align-items-center gap-1 border"
-                          style={{ fontSize: 12 }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <Download size={14} /> Download
-                        </Button>
                       </div>
                     </Col>
                   </Row>
@@ -262,7 +253,7 @@ const UserHealthRecords = () => {
           <>
             <Modal.Header closeButton>
               <Modal.Title style={{ fontSize: 16 }}>
-                <FileText size={18} className="me-2" style={{ color: '#1d4ed8' }} />
+                <FileText size={18} className="me-2" style={{ color: '#0f172a' }} />
                 {t('healthRecords')} - {t('details')}
               </Modal.Title>
             </Modal.Header>
@@ -312,14 +303,6 @@ const UserHealthRecords = () => {
               </Row>
             </Modal.Body>
             <Modal.Footer>
-              <Button
-                size="sm"
-                variant="light"
-                className="d-flex align-items-center gap-1 border"
-                style={{ fontSize: 12 }}
-              >
-                <Download size={14} /> Download PDF
-              </Button>
               <Button size="sm" variant="light" onClick={() => setShowView(null)}>
                 {t('close')}
               </Button>

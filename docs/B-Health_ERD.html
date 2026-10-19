@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>B-Health — Entity Relationship Diagram</title>
+<style>
+  body { margin: 0; font-family: Tahoma, Verdana, Arial, sans-serif; background: #f1f5f9; }
+  header { padding: 16px 24px 4px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; font-family: Arial, sans-serif; }
+  button { background: #0f172a; color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
+  .wrap { padding: 10px 24px 24px; }
+  .sheet { background: #fff; border: 1px solid #cbd5e1; padding: 12px; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: Tahoma, Verdana, Arial, sans-serif; fill: #000; }
+  @media print {
+    @page { size: landscape; margin: 6mm; }
+    body { background: #fff; }
+    header { display: none; }
+    .wrap { padding: 0; }
+    .sheet { border: 0; padding: 0; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>B-Health: Entity Relationship Diagram</h1>
+  <div style="display:flex;gap:8px">
+    <button onclick="downloadPng('erd', 'B-Health_ERD.png')">Download as Image (PNG)</button>
+    <button onclick="window.print()">Print / Save as PDF</button>
+  </div>
+</header>
+<div class="wrap"><div class="sheet"><svg id="erd" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
+
+<script src="export-png.js"></script>
+<script>
+// key: 'pk' primary key, 'fk' foreign key, 'ref' logical reference (matched by value), '' regular column
+const TABLES = {
+  device_tokens: { col: 0, cols: [
+    ['id', 'BIGINT', 'pk'], ['user_id', 'BIGINT', 'ref'], ['token', 'TEXT'], ['platform', 'TEXT'],
+    ['created_at', 'TIMESTAMPTZ'], ['updated_at', 'TIMESTAMPTZ'],
+  ], indexes: ['device_tokens_pkey', 'device_tokens_token_key'] },
+  health_records: { col: 0, cols: [
+    ['id', 'BIGINT', 'pk'], ['patient', 'VARCHAR', 'ref'], ['type', 'VARCHAR'], ['diagnosis', 'VARCHAR'],
+    ['doctor', 'VARCHAR'], ['date', 'DATE'], ['notes', 'TEXT'], ['prescription', 'BOOLEAN'],
+    ['status', 'VARCHAR'], ['created_at', 'TIMESTAMPTZ'], ['updated_at', 'TIMESTAMPTZ'], ['deleted_at', 'TIMESTAMPTZ'],
+  ], indexes: ['health_records_pkey'] },
+  notifications: { col: 0, cols: [
+    ['id', 'BIGINT', 'pk'], ['type', 'VARCHAR'], ['priority', 'VARCHAR'], ['title', 'VARCHAR'],
+    ['message', 'TEXT'], ['recipient', 'VARCHAR', 'ref'], ['is_read', 'BOOLEAN'], ['created_at', 'TIMESTAMPTZ'],
+    ['deleted_at', 'TIMESTAMPTZ'],
+  ], indexes: ['notifications_pkey'] },
+  users: { col: 1, cols: [
+    ['id', 'BIGINT', 'pk'], ['email', 'VARCHAR'], ['created_at', 'TIMESTAMPTZ'], ['username', 'VARCHAR'],
+    ['password', 'VARCHAR'], ['full_name', 'VARCHAR'], ['phone', 'VARCHAR'], ['purok', 'VARCHAR'],
+    ['is_active', 'BOOLEAN'], ['profile_photo', 'TEXT'], ['birthdate', 'DATE'], ['gender', 'VARCHAR'],
+    ['emergency_name', 'VARCHAR'], ['emergency_relationship', 'VARCHAR'], ['emergency_phone', 'VARCHAR'],
+  ], indexes: ['users_pkey', 'users_username_key'] },
+  announcements: { col: 1, cols: [
+    ['id', 'BIGINT', 'pk'], ['title', 'VARCHAR'], ['category', 'VARCHAR'], ['body', 'TEXT'],
+    ['author', 'VARCHAR'], ['audience', 'VARCHAR'], ['publish_date', 'DATE'], ['event_date', 'DATE'],
+    ['status', 'VARCHAR'], ['pinned', 'BOOLEAN'], ['created_at', 'TIMESTAMPTZ'], ['updated_at', 'TIMESTAMPTZ'],
+    ['deleted_at', 'TIMESTAMPTZ'], ['image_url', 'TEXT'],
+  ], indexes: ['announcements_pkey'] },
+  appointments: { col: 2, cols: [
+    ['id', 'BIGINT', 'pk'], ['user_id', 'BIGINT', 'fk'], ['name', 'VARCHAR'], ['service', 'VARCHAR', 'ref'],
+    ['date', 'DATE'], ['time', 'VARCHAR'], ['notes', 'TEXT'], ['status', 'VARCHAR'],
+    ['handled_by', 'VARCHAR', 'ref'], ['created_at', 'TIMESTAMPTZ'], ['updated_at', 'TIMESTAMPTZ'], ['deleted_at', 'TIMESTAMPTZ'],
+  ], indexes: ['appointments_pkey'] },
+  emergency_contacts: { col: 2, cols: [
+    ['id', 'BIGINT', 'pk'], ['name', 'VARCHAR'], ['category', 'VARCHAR'], ['phone', 'VARCHAR'],
+    ['alt_phone', 'VARCHAR'], ['email', 'VARCHAR'], ['address', 'VARCHAR'], ['available', 'VARCHAR'],
+    ['is_active', 'BOOLEAN'], ['is_favorite', 'BOOLEAN'], ['notes', 'TEXT'], ['created_at', 'TIMESTAMPTZ'],
+    ['updated_at', 'TIMESTAMPTZ'], ['deleted_at', 'TIMESTAMPTZ'],
+  ], indexes: ['emergency_contacts_pkey'] },
+  admins: { col: 3, cols: [
+    ['id', 'BIGINT', 'pk'], ['username', 'VARCHAR'], ['password', 'VARCHAR'], ['name', 'VARCHAR'],
+    ['email', 'VARCHAR'], ['role', 'VARCHAR'], ['is_active', 'BOOLEAN'], ['is_owner', 'BOOLEAN'],
+    ['created_at', 'TIMESTAMPTZ'], ['updated_at', 'TIMESTAMPTZ'],
+  ], indexes: ['admins_pkey', 'admins_username_key'] },
+  services: { col: 3, cols: [
+    ['id', 'BIGINT', 'pk'], ['name', 'VARCHAR'], ['category', 'VARCHAR'], ['icon', 'VARCHAR'],
+    ['accent', 'VARCHAR'], ['description', 'TEXT'], ['beneficiaries', 'INT'], ['schedule', 'VARCHAR'],
+    ['location', 'VARCHAR'], ['staff', 'VARCHAR'], ['is_active', 'BOOLEAN'], ['created_at', 'TIMESTAMPTZ'],
+    ['updated_at', 'TIMESTAMPTZ'], ['deleted_at', 'TIMESTAMPTZ'], ['slots_per_hour', 'INT'],
+  ], indexes: ['services_pkey'] },
+};
+
+// parent -> child. dashed = logical reference matched by value (no FK constraint)
+// parentOpt = parent's end is "zero or one" (nullable FK or unmatched text value); otherwise "exactly one"
+const RELATIONS = [
+  { parent: ['users', 'id'],        child: ['appointments', 'user_id'],     lane: 0.5,  parentOpt: true },
+  { parent: ['users', 'id'],        child: ['device_tokens', 'user_id'],    lane: 0.62, dashed: true },
+  { parent: ['users', 'full_name'], child: ['health_records', 'patient'],   lane: 0.38, dashed: true, parentOpt: true },
+  { parent: ['users', 'full_name'], child: ['notifications', 'recipient'],  lane: 0.5,  dashed: true, parentOpt: true },
+  { parent: ['admins', 'name'],     child: ['appointments', 'handled_by'],  lane: 0.6,  dashed: true, parentOpt: true },
+  { parent: ['services', 'name'],   child: ['appointments', 'service'],     lane: 0.3,  dashed: true, parentOpt: true },
+];
+
+// ── layout ──
+const TW = 240, GAP = 80, LEFT = 20, TOP = 20, VGAP = 30;
+const HEAD = 22, ROW = 16, IDX_HEAD = 18, IDX_ROW = 15;
+const colX = (c) => LEFT + c * (TW + GAP);
+const nextY = [TOP, TOP, TOP, TOP];
+Object.entries(TABLES).forEach(([name, t]) => {
+  t.name = name;
+  t.x = colX(t.col);
+  t.y = nextY[t.col];
+  t.h = HEAD + t.cols.length * ROW + 4 + IDX_HEAD + t.indexes.length * IDX_ROW + 4;
+  nextY[t.col] += t.h + VGAP;
+});
+const W = colX(4) - GAP + LEFT, H = Math.max(...nextY);
+
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('erd');
+svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+const add = (tag, attrs, text, parent = svg) => {
+  const e = document.createElementNS(NS, tag);
+  Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
+  if (text != null) e.textContent = text;
+  parent.appendChild(e); return e;
+};
+add('defs', {}).innerHTML = `
+  <linearGradient id="head" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c5dcf0"/><stop offset="1" stop-color="#8fb5d8"/></linearGradient>
+  <linearGradient id="idx" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bfbfbf"/><stop offset="1" stop-color="#9c9c9c"/></linearGradient>`;
+
+const rowY = (t, colName) => t.y + HEAD + t.cols.findIndex((c) => c[0] === colName) * ROW + ROW / 2 + 2;
+
+// column icons (Workbench style)
+const icon = (x, y, kind, g) => {
+  if (kind === 'pk') {           // yellow key
+    add('circle', { cx: x + 3, cy: y - 3, r: 3, fill: '#f2c200', stroke: '#9a7a00', 'stroke-width': 0.8 }, null, g);
+    add('rect', { x: x + 2, y: y - 1, width: 2.2, height: 6, fill: '#f2c200', stroke: '#9a7a00', 'stroke-width': 0.6 }, null, g);
+  } else {
+    const fill = kind === 'fk' ? '#d9342b' : kind === 'ref' ? '#f59e0b' : '#bfe7ee';
+    const stroke = kind === 'fk' ? '#8f1d16' : kind === 'ref' ? '#a16207' : '#3c9fb0';
+    add('path', { d: `M${x + 3},${y - 5} L${x + 7},${y - 1} L${x + 3},${y + 3} L${x - 1},${y - 1} Z`, fill, stroke, 'stroke-width': 0.8 }, null, g);
+  }
+};
+
+const drawTable = (t) => {
+  const g = add('g', {});
+  add('rect', { x: t.x + 3, y: t.y + 3, width: TW, height: t.h, fill: '#d0d7df', rx: 2 }, null, g);   // shadow
+  add('rect', { x: t.x, y: t.y, width: TW, height: t.h, fill: '#fff', stroke: '#7d9bb8', 'stroke-width': 1, rx: 2 }, null, g);
+  add('rect', { x: t.x, y: t.y, width: TW, height: HEAD, fill: 'url(#head)', stroke: '#7d9bb8', 'stroke-width': 1, rx: 2 }, null, g);
+  // table icon + name + collapse arrow
+  add('rect', { x: t.x + 7, y: t.y + 6, width: 13, height: 10, fill: '#fff', stroke: '#2f5f8a', 'stroke-width': 1 }, null, g);
+  add('line', { x1: t.x + 7, y1: t.y + 9, x2: t.x + 20, y2: t.y + 9, stroke: '#2f5f8a', 'stroke-width': 1 }, null, g);
+  add('text', { x: t.x + 27, y: t.y + 15.5, 'font-size': 11, 'font-weight': 700 }, t.name.toUpperCase(), g);
+  add('path', { d: `M${t.x + TW - 18},${t.y + 9} L${t.x + TW - 10},${t.y + 9} L${t.x + TW - 14},${t.y + 14} Z`, fill: '#2f4f6f' }, null, g);
+
+  t.cols.forEach(([name, type, kind], i) => {
+    const y = t.y + HEAD + i * ROW + ROW / 2 + 6;
+    icon(t.x + 8, y - 3, kind || '', g);
+    add('text', { x: t.x + 22, y, 'font-size': 10 }, `${name} ${type}`, g);
+  });
+
+  const iy = t.y + HEAD + t.cols.length * ROW + 4;
+  add('rect', { x: t.x, y: iy, width: TW, height: IDX_HEAD, fill: 'url(#idx)' }, null, g);
+  add('text', { x: t.x + 8, y: iy + 12.5, 'font-size': 10, 'font-weight': 700, style: 'fill:#fff' }, 'Indexes', g);
+  add('path', { d: `M${t.x + TW - 16},${iy + 5} L${t.x + TW - 10},${iy + 9} L${t.x + TW - 16},${iy + 13} Z`, fill: '#444' }, null, g);
+  t.indexes.forEach((ix, i) => add('text', { x: t.x + 8, y: iy + IDX_HEAD + i * IDX_ROW + 11, 'font-size': 9.5 }, ix, g));
+};
+
+// crow's foot notation at an endpoint; s = +1 if the line leaves to the right, -1 to the left
+const ends = {
+  one:  (x, y, s) => {         // exactly one: ||
+    [8, 12].forEach((d) => add('line', { x1: x + s * d, y1: y - 6, x2: x + s * d, y2: y + 6, stroke: '#000', 'stroke-width': 1.1 }));
+  },
+  oneOpt: (x, y, s) => {       // zero or one: | then O
+    add('line', { x1: x + s * 8, y1: y - 6, x2: x + s * 8, y2: y + 6, stroke: '#000', 'stroke-width': 1.1 });
+    add('circle', { cx: x + s * 14.5, cy: y, r: 2.8, fill: '#fff', stroke: '#000', 'stroke-width': 1.1 });
+  },
+  manyOpt: (x, y, s) => {      // zero or many: crow's foot then O
+    [-6, 0, 6].forEach((dy) => add('line', { x1: x + s * 11, y1: y, x2: x, y2: y + dy, stroke: '#000', 'stroke-width': 1.1 }));
+    add('circle', { cx: x + s * 15, cy: y, r: 2.8, fill: '#fff', stroke: '#000', 'stroke-width': 1.1 });
+  },
+};
+
+const drawRelation = (r, i) => {
+  const p = TABLES[r.parent[0]], c = TABLES[r.child[0]];
+  const parentLeft = p.x > c.x;                  // parent is to the right of child
+  const px = parentLeft ? p.x : p.x + TW, sp = parentLeft ? -1 : 1;
+  const cx = parentLeft ? c.x + TW : c.x, sc = parentLeft ? 1 : -1;
+  const offset = RELATIONS.filter((o, j) => j < i && o.parent.join() === r.parent.join() && (TABLES[o.child[0]].x > p.x) === !parentLeft).length * 4;
+  const py = rowY(p, r.parent[1]) + offset, cy = rowY(c, r.child[1]);
+  const gapStart = Math.min(px, cx), laneX = gapStart + GAP * r.lane;
+  add('polyline', {
+    points: `${px},${py} ${laneX},${py} ${laneX},${cy} ${cx},${cy}`,
+    fill: 'none', stroke: '#000', 'stroke-width': 1.1, ...(r.dashed ? { 'stroke-dasharray': '5 3' } : {}),
+  });
+  (r.parentOpt ? ends.oneOpt : ends.one)(px, py, sp);
+  ends.manyOpt(cx, cy, sc);
+};
+
+RELATIONS.forEach(drawRelation);
+Object.values(TABLES).forEach(drawTable);
+</script>
+</body>
+</html>

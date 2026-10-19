@@ -9,7 +9,7 @@ import { userApi } from '../../context/UserAuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 
 const VACCINE_COLORS = {
-  'BCG': '#16a34a', 'Measles': '#3b82f6', 'Tetanus': '#a855f7',
+  'BCG': '#16a34a', 'Measles': '#0f172a', 'Tetanus': '#a855f7',
   'Flu (Influenza)': '#0ea5e9', 'Pneumococcal': '#f59e0b', 'DPT': '#ec4899',
   'Hepatitis B': '#8b5cf6', 'Polio (OPV)': '#06b6d4', 'COVID-19': '#dc2626',
   'HPV': '#84cc16', 'MMR': '#f97316', 'Varicella': '#14b8a6', 'Rabies': '#64748b',
@@ -118,7 +118,7 @@ const UserVaccinations = () => {
         <Card className="border rounded-4 mb-4" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
           <Card.Body className="p-4">
             <h6 className="fw-bold mb-3" style={{ fontSize: 14, color: '#111827' }}>
-              <Shield size={15} className="me-2" style={{ color: '#1d4ed8' }} />
+              <Shield size={15} className="me-2" style={{ color: '#0f172a' }} />
               Vaccine Completion Progress
             </h6>
             <Row className="g-3">
@@ -185,7 +185,7 @@ const UserVaccinations = () => {
                           </div>
                         )}
                         <Button size="sm" className="w-100 border-0"
-                          style={{ background: overdue ? 'linear-gradient(135deg,#dc2626,#b91c1c)' : 'linear-gradient(135deg,#2563eb,#1d4ed8)', fontSize: 12, fontWeight: 600 }}
+                          style={{ background: overdue ? 'linear-gradient(135deg,#dc2626,#b91c1c)' : 'linear-gradient(135deg,#0f172a,#1e293b)', fontSize: 12, fontWeight: 600 }}
                           onClick={() => navigate('/user/appointments')}>
                           {overdue ? '⚠ ' + t('scheduleImmediately') : t('scheduleAppointment')} <ChevronRight size={13} />
                         </Button>
@@ -277,7 +277,7 @@ const UserVaccinations = () => {
                 </div>
                 <div className="p-4 d-flex flex-column gap-3">
                   {[
-                    { icon: <Calendar size={16} color="#1d4ed8" />, label: 'Date Administered',
+                    { icon: <Calendar size={16} color="#0f172a" />, label: 'Date Administered',
                       value: showView.date ? new Date(showView.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '—' },
                     showView.next_due && { icon: <Clock size={16} color="#f59e0b" />, label: 'Next Due',
                       value: new Date(showView.next_due).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) },

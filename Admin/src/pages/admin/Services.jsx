@@ -5,6 +5,9 @@ import {
   Search, Edit3, Heart, Baby, Syringe, Users, Stethoscope, Bug, HandHeart,
   Accessibility, Activity, Sparkles, Calendar, Clock, MapPin, Power, Plus, Trash2,
 } from 'lucide-react';
+import { TIME_SLOTS, capacityMap, availability, todayISO } from '../../utils/timeSlots';
+
+const totalSlots = (s) => Object.values(capacityMap(s)).reduce((a, b) => a + b, 0);
 
 const iconMap = {
   heart: Heart, baby: Baby, syringe: Syringe, users: Users, stethoscope: Stethoscope,
@@ -39,6 +42,7 @@ const iconChoices = Object.keys(iconMap);
 const emptyForm = {
   id: null, name: '', category: 'General', icon: 'heart', accent: '#10b981',
   description: '', beneficiaries: 0, schedule: '', location: '', staff: '', slots_per_hour: 5, active: true,
+  slot_schedule: capacityMap({ slots_per_hour: 5 }),
 };
 
 const Services = () => {
@@ -93,6 +97,11 @@ const Services = () => {
     return counts;
   }, [appointments]);
   const benefCount = (name) => benefByService[name] || 0;
+  const todaysAppts = useMemo(() => {
+    const today = todayISO();
+    return (appointments || []).filter((a) => String(a.date || '').slice(0, 10) === today);
+  }, [appointments]);
+  const todayAvail = (s) => availability(s, todaysAppts);
   const totalBeneficiaries = useMemo(
     () => items.reduce((s, x) => s + benefCount(x.name), 0),
     [items, benefByService],
@@ -112,7 +121,7 @@ const Services = () => {
 
   const openEdit = (s) => {
     setEditingId(s.id);
-    setForm({ ...s });
+    setForm({ ...s, slot_schedule: capacityMap(s) });
     setShowForm(true);
   };
 
@@ -341,8 +350,10 @@ const Services = () => {
                       <div className="fw-bold" style={{ fontSize: 22, color: '#0f172a', lineHeight: 1.1, letterSpacing: '-0.02em' }}>{benefCount(s.name)}</div>
                     </div>
                     <div>
-                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Slots/Hour</div>
-                      <div className="fw-bold" style={{ fontSize: 22, color: s.accent, lineHeight: 1.1, letterSpacing: '-0.02em' }}>{s.slots_per_hour ?? 5}</div>
+                      <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Left Today</div>
+                      <div className="fw-bold" style={{ fontSize: 22, color: s.accent, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
+                        {todayAvail(s).left}<span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}> / {totalSlots(s)}</span>
+                      </div>
                     </div>
                     <div className="text-end" style={{ maxWidth: '40%' }}>
                       <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Schedule</div>
@@ -419,7 +430,16 @@ const Services = () => {
             <hr />
             <div className="d-flex flex-column gap-2" style={{ fontSize: 13 }}>
               <div className="d-flex align-items-center gap-2"><Users size={14} color="#6b7280" /> <strong>Beneficiaries:</strong> {benefCount(showView.name)} <span style={{ fontSize: 11, color: '#9ca3af' }}>(completed appointments)</span></div>
-              <div className="d-flex align-items-center gap-2"><Clock size={14} color="#6b7280" /> <strong>Slots per Hour:</strong> {showView.slots_per_hour ?? 5}</div>
+              <div>
+                <div className="d-flex align-items-center gap-2 mb-1"><Clock size={14} color="#6b7280" /> <strong>Slots per Time:</strong> {totalSlots(showView)} total per day</div>
+                <div className="d-flex flex-wrap gap-1">
+                  {Object.entries(todayAvail(showView).times).map(([t, x]) => (
+                    <span key={t} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, backgroundColor: x.cap > 0 ? (x.left > 0 ? '#f1f5f9' : '#fef3c7') : '#fee2e2', color: x.cap > 0 ? '#334155' : '#b91c1c' }}>
+                      {t}: {x.cap > 0 ? `${x.left}/${x.cap} left today` : 'Closed'}
+                    </span>
+                  ))}
+                </div>
+              </div>
               <div className="d-flex align-items-center gap-2"><Calendar size={14} color="#6b7280" /> <strong>Schedule:</strong> {showView.schedule}</div>
               <div className="d-flex align-items-center gap-2"><MapPin size={14} color="#6b7280" /> <strong>Location:</strong> {showView.location}</div>
               <div className="d-flex align-items-center gap-2"><Stethoscope size={14} color="#6b7280" /> <strong>Staff:</strong> {showView.staff}</div>
@@ -539,14 +559,33 @@ const Services = () => {
               </Col>
             </Row>
             <Form.Group className="mt-3">
-              <Form.Label style={{ fontSize: 12, fontWeight: 600 }}>Slots per Hour</Form.Label>
-              <Form.Control
-                type="number" min={1} max={100} size="sm"
-                value={form.slots_per_hour}
-                onChange={(e) => setForm({ ...form, slots_per_hour: Number(e.target.value) })}
-              />
+              <Form.Label style={{ fontSize: 12, fontWeight: 600 }}>Slots per Time</Form.Label>
+              <div className="d-flex align-items-center gap-2 mb-2">
+                <Form.Control
+                  type="number" min={0} max={100} size="sm" style={{ width: 80 }}
+                  value={form.slots_per_hour}
+                  onChange={(e) => setForm({ ...form, slots_per_hour: Math.max(0, Number(e.target.value)) })}
+                />
+                <Button size="sm" variant="light" style={{ fontSize: 12 }}
+                  onClick={() => setForm({ ...form, slot_schedule: Object.fromEntries(TIME_SLOTS.map((t) => [t, form.slots_per_hour])) })}>
+                  Apply to all times
+                </Button>
+              </div>
+              <Row className="g-2">
+                {TIME_SLOTS.map((t) => (
+                  <Col xs={6} sm={3} key={t}>
+                    <div style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>{t}</div>
+                    <Form.Control
+                      type="number" min={0} max={100} size="sm"
+                      value={form.slot_schedule?.[t] ?? form.slots_per_hour}
+                      onChange={(e) => setForm({ ...form, slot_schedule: { ...form.slot_schedule, [t]: Math.max(0, Number(e.target.value)) } })}
+                      style={{ backgroundColor: Number(form.slot_schedule?.[t]) === 0 ? '#fef2f2' : undefined }}
+                    />
+                  </Col>
+                ))}
+              </Row>
               <Form.Text style={{ fontSize: 11, color: '#6b7280' }}>
-                Max number of appointments accepted per time slot for this service.
+                Max appointments accepted for each time. Set 0 to close that time (residents won't see it).
               </Form.Text>
             </Form.Group>
           </Modal.Body>

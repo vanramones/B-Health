@@ -5,6 +5,14 @@ import { socket } from '../../config/socket';
 import { Card, Row, Col, Form, InputGroup, Button, Table, Modal } from 'react-bootstrap';
 import { Search, Users, UserCheck, UserX, MapPin, Phone, ToggleLeft, ToggleRight, Calendar, Plus, Edit3 } from 'lucide-react';
 
+import { patientCode } from '../../utils/recordCodes';
+
+const CodeTag = ({ children }) => (
+  <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace', fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, padding: '1px 6px', whiteSpace: 'nowrap' }}>
+    {children}
+  </span>
+);
+
 const emptyForm = { full_name: '', username: '', phone: '', purok: '', password: '' };
 
 const statusVariant = {
@@ -97,7 +105,7 @@ const RegisteredUsers = () => {
     const q = query.trim().toLowerCase();
     return users.filter((u) => {
       const matchStatus = filter === 'all' || (filter === 'active' ? u.is_active : !u.is_active);
-      const matchQuery  = !q || u.full_name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q) || (u.purok || '').toLowerCase().includes(q);
+      const matchQuery  = !q || patientCode(u).toLowerCase().includes(q) || u.full_name.toLowerCase().includes(q) || u.username.toLowerCase().includes(q) || (u.purok || '').toLowerCase().includes(q);
       return matchStatus && matchQuery;
     });
   }, [users, query, filter]);
@@ -163,7 +171,7 @@ const RegisteredUsers = () => {
             <div className="ms-auto d-flex align-items-center gap-2">
               <InputGroup size="sm" style={{ maxWidth: 260, minWidth: 140 }}>
                 <InputGroup.Text className="bg-light border-end-0"><Search size={14} color="#9ca3af" /></InputGroup.Text>
-                <Form.Control className="bg-light border-start-0" placeholder="Search name, username, purok..."
+                <Form.Control className="bg-light border-start-0" placeholder="Search patient ID, name, username, purok..."
                   value={query} onChange={(e) => setQuery(e.target.value)} style={{ fontSize: 13 }} />
               </InputGroup>
               <Button size="sm" className="border-0 d-flex align-items-center gap-1"
@@ -182,7 +190,8 @@ const RegisteredUsers = () => {
           <Table hover className="mb-0 align-middle">
             <thead style={{ backgroundColor: '#f9fafb' }}>
               <tr style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                <th className="px-4 py-3">Resident</th>
+                <th className="px-4 py-3">Patient ID</th>
+                <th className="py-3">Resident</th>
                 <th className="py-3">Username</th>
                 <th className="py-3">Phone</th>
                 <th className="py-3">Purok</th>
@@ -193,17 +202,18 @@ const RegisteredUsers = () => {
             </thead>
             <tbody style={{ fontSize: 13 }}>
               {loading && (
-                <tr><td colSpan={7} className="text-center py-5" style={{ color: '#9ca3af' }}>Loading...</td></tr>
+                <tr><td colSpan={8} className="text-center py-5" style={{ color: '#9ca3af' }}>Loading...</td></tr>
               )}
               {!loading && filtered.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-5" style={{ color: '#9ca3af' }}>No users found.</td></tr>
+                <tr><td colSpan={8} className="text-center py-5" style={{ color: '#9ca3af' }}>No users found.</td></tr>
               )}
               {filtered.map((u) => (
                 <tr key={u.id} onClick={() => setShowView(u)}
                   style={{ cursor: 'pointer' }}
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f7ff'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3"><CodeTag>{patientCode(u)}</CodeTag></td>
+                  <td className="py-3">
                     <div className="d-flex align-items-center gap-2">
                       <div className="d-flex align-items-center justify-content-center rounded-circle text-white fw-bold"
                         style={{ width: 32, height: 32, backgroundColor: '#1d4ed8', fontSize: 11, flexShrink: 0 }}>
@@ -265,7 +275,9 @@ const RegisteredUsers = () => {
                     <span className="fw-bold text-truncate" style={{ fontSize: 14, color: '#111827' }}>{u.full_name}</span>
                     <StatusPill active={u.is_active} />
                   </div>
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>@{u.username} · {u.purok || '—'}</div>
+                  <div className="d-flex align-items-center gap-2 flex-wrap" style={{ fontSize: 12, color: '#6b7280' }}>
+                    <CodeTag>{patientCode(u)}</CodeTag> @{u.username} · {u.purok || '—'}
+                  </div>
                 </div>
               </div>
             </Card.Body>
@@ -288,6 +300,7 @@ const RegisteredUsers = () => {
               <div>
                 <div className="fw-bold" style={{ fontSize: 17 }}>{showView.full_name}</div>
                 <div style={{ fontSize: 13, color: '#6b7280' }}>@{showView.username}</div>
+                <div className="mt-1"><CodeTag>{patientCode(showView)}</CodeTag></div>
               </div>
               <div className="ms-auto"><StatusPill active={showView.is_active} /></div>
             </div>

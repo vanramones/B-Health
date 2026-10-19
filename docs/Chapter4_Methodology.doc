@@ -1,0 +1,41 @@
+﻿<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><style>body{font-family:'Times New Roman',serif;font-size:12pt;line-height:2;text-align:justify}h1{font-size:14pt;text-align:center}h2{font-size:12pt}p{margin:0 0 24pt;text-indent:.5in}ol{padding-left:.75in}li{margin-bottom:6pt}</style></head><body>
+
+<h1>CHAPTER 4<br />METHODOLOGY, RESULTS, DISCUSSION</h1>
+
+<p>In developing the B-Health: Barangay Health Center Digital System, the researchers utilized iterative development, adaptable requirements, and prototyping to meet all project objectives, with flexibility to accommodate necessary adjustments. The Rapid Application Development (RAD) methodology guided the process, enabling the team to collect requirements concurrently with system development. This approach allowed the researchers to integrate feedback and make adjustments throughout the project.</p>
+
+<p>The development process was organized into multiple structured phases, each with key steps. The planning phase, which started in March, involved defining the project scope, goals, and timeline to align the team and ensure a shared understanding of objectives and expected outcomes. It was during this phase that the decision was made to deliver the system through two components: an administrative website for health center staff and an Android mobile application for residents.</p>
+
+<p>The analysis phase began in April, concentrating on gathering and prioritizing system requirements. During this phase, the researchers identified the critical features and components necessary for the B-Health application to function effectively, including appointment scheduling, health record management, notifications, and report generation. This helped the team focus on key development areas and capture all essential requirements.</p>
+
+<p>The design and development phases kicked off in May and extended over several months, during which rapid prototyping and user feedback loops were employed. This iterative approach allowed for continuous refinement, with user input incorporated to improve functionality and user experience.</p>
+
+<p>The development phase, running from June to November, involved coding, unit testing, and integration of system components to ensure smooth operation and dependable functionality. During this phase, the administrative website, the resident mobile application, the Supabase database, and the push notification service were developed and integrated into a single working system.</p>
+
+<p>The final phase, testing, took place in November and included rigorous assessments to verify that the application met all functional and performance standards. During this phase, the B-Health system was tested across various platforms to ensure a consistent user experience for both the administrative website and the Android mobile application. A Gantt chart was used to outline the project timeline, helping the team stay on schedule and complete all deliverables on time.</p>
+
+<h2>Requirement Analysis</h2>
+
+<p>The researchers interviewed a representative from the Barangay Health Center to gather insights into the desired features and functionality of the proposed system. Through these interviews, the researchers collected valuable input regarding the health center's current processes, which relied heavily on manual, paper-based procedures for scheduling appointments and maintaining patient records. The interviews revealed the need for a digital solution that would allow health workers to manage appointments and health records efficiently while giving residents a convenient way to request appointments and view their records through their mobile devices.</p>
+
+<h2>Requirements Documentation</h2>
+
+<p>Requirements documentation outlines both the functional and non-functional requirements that guide the development process and ensure the project meets its objectives. The primary goal of the system is to establish an informative platform that enhances the delivery of barangay health services and contributes to the community's well-being. This optimization reduces complexity for all users, saving time and effort and ensuring a smooth, user-friendly experience for both residents and administrators.</p>
+
+<h2>Functional Requirements</h2>
+
+<p>The functional requirements served as the foundation for the design of the B-Health system, specifying the tasks the system needed to perform to function effectively and deliver value to users. These specifications described the application's input processing, task execution, and output generation in response to user actions. Specifically, the system aims to:</p>
+
+<ol>
+  <li>Develop a module that allows health workers to input and update patient health records.</li>
+  <li>Enable users to submit appointment requests.</li>
+  <li>Automate the scheduling and management of patient appointments.</li>
+  <li>Implement a notification system for appointment confirmations.</li>
+  <li>Generate reports.</li>
+</ol>
+
+<h2>Non-Functional Requirements</h2>
+
+<p>The non-functional requirements define the quality attributes of the system. The B-Health system was designed to be usable, with a simplified mobile-first interface for residents and an administrative interface for staff; reliable, with data stored in a managed cloud database (Supabase) and real-time synchronization between the website and the mobile application; secure, with role-based access separating administrators from residents and encrypted password storage; and performant, delivering appointment updates and notifications in a timely manner through Firebase Cloud Messaging.</p>
+
+</body></html>

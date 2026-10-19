@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>B-Health — Relevant Source Code</title>
+<style>
+  body { margin: 0; font-family: Arial, sans-serif; background: #f1f5f9; }
+  header { padding: 16px 24px 4px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  button { background: #0f172a; color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
+  .page {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 12pt;
+    line-height: 1.6;
+    max-width: 6.5in;
+    margin: 0 auto 24px;
+    padding: 1in;
+    color: #000;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,.15);
+  }
+  .page h1 { font-size: 14pt; text-align: center; letter-spacing: 1px; margin: 0 0 24pt; font-weight: 700; }
+  .page h2 { font-size: 12pt; margin: 18pt 0 4pt; }
+  .page .src { font-size: 10pt; font-style: italic; margin: 0 0 4pt; }
+  pre {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 8.5pt;
+    line-height: 1.3;
+    padding: 4pt 0;
+    margin: 0 0 14pt;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  @media print {
+    @page { size: letter; margin: 1in; }
+    body { background: #fff; }
+    header { display: none; }
+    .page { box-shadow: none; padding: 0; margin: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>B-Health: Relevant Source Code</h1>
+  <div style="display:flex;gap:8px">
+    <a href="B-Health_RelevantCode.doc" download="B-Health_RelevantCode.doc"
+       style="background:#0f172a;color:#fff;border:0;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;text-decoration:none;font-size:14px">Download as Word (.doc)</a>
+    <button onclick="window.print()">Print / Save as PDF</button>
+  </div>
+</header>
+
+<div class="page" id="doc">
+
+<h1>RELEVANT SOURCE CODE</h1>
+
+<h2>A. User Signup</h2>
+<p class="src">Admin/src/pages/user/UserRegister.jsx — form validation and submission</p>
+<pre>const validate = () => {
+  const e = {};
+  if (!form.username.trim())          e.username = 'Username is required.';
+  else if (form.username.trim().length < 3)
+                                      e.username = 'Username must be at least 3 characters.';
+  else if (/\s/.test(form.username))  e.username = 'Username cannot contain spaces.';
+  if (!form.fullName.trim())          e.fullName = 'Full name is required.';
+  if (!form.phone.trim())             e.phone = 'Phone number is required.';
+  else if (!/^\d{10}$/.test(form.phone.replace(/\s/g, '')))
+                                      e.phone = 'Enter a valid 10-digit number.';
+  if (!form.purok)                    e.purok = 'Please select your purok.';
+  if (!form.password)                 e.password = 'Password is required.';
+  else if (form.password.length < 8)  e.password = 'Must be at least 8 characters.';
+  if (!form.confirmPassword)          e.confirmPassword = 'Please confirm your password.';
+  else if (form.password !== form.confirmPassword)
+                                      e.confirmPassword = 'Passwords do not match.';
+  return e;
+};
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  const e_ = validate();
+  if (Object.keys(e_).length) { setErrors(e_); return; }
+
+  setSubmitting(true);
+  setGlobalError('');
+  const result = await register({
+    username: form.username.trim().toLowerCase(),
+    password: form.password,
+    full_name: form.fullName.trim(),
+    phone: form.phone.trim(),
+    purok: form.purok,
+  });
+  setSubmitting(false);
+  if (result.ok) {
+    setToast({ type: 'success',
+      message: `Welcome, ${form.fullName}! Your account has been created successfully.` });
+    setTimeout(() => navigate('/user/login', { replace: true,
+      state: { registrationSuccess: true, userName: form.fullName } }), 500);
+  } else {
+    setGlobalError(result.error || 'Registration failed. Please try again.');
+  }
+};</pre>
+
+<p class="src">Admin/src/services/supabaseApi.js — POST /auth/user/register route</p>
+<pre>if (seg[1] === 'user' && seg[2] === 'register' && method === 'POST') {
+  const r = await rpc('user_register', {
+    p_username: body.username,
+    p_password: body.password,
+    p_full_name: body.full_name,
+    p_phone: body.phone || '',
+    p_purok: body.purok || '',
+  });
+  if (r && r.error) throw fail(r.error, 409);
+  return { ok: true, token: `sb.user.${r.id}`, user: r };
+}</pre>
+
+<p class="src">backend/config/supabase_setup.sql — user_register database function</p>
+<pre>CREATE OR REPLACE FUNCTION user_register(
+  p_username TEXT, p_password TEXT, p_full_name TEXT,
+  p_phone TEXT DEFAULT '', p_purok TEXT DEFAULT ''
+) RETURNS JSON LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE new_id BIGINT;
+BEGIN
+  IF EXISTS (SELECT 1 FROM users WHERE username = lower(trim(p_username))) THEN
+    RETURN json_build_object('error', 'Username already taken.');
+  END IF;
+  INSERT INTO users (username, password, full_name, phone, purok, is_active)
+  VALUES (lower(trim(p_username)), crypt(p_password, gen_salt('bf')),
+          trim(p_full_name), coalesce(trim(p_phone), ''),
+          coalesce(trim(p_purok), ''), TRUE)
+  RETURNING id INTO new_id;
+  RETURN json_build_object('id', new_id,
+    'username', lower(trim(p_username)),
+    'full_name', trim(p_full_name),
+    'phone', coalesce(trim(p_phone), ''),
+    'purok', coalesce(trim(p_purok), ''));
+END; $$;</pre>
+
+<h2>B. Health Records Module (Objective 1)</h2>
+<p class="src">Admin/src/services/supabaseApi.js — table configuration and generic CRUD used by the admin Health Records page</p>
+<pre>'health-records': {
+  table: 'health_records',
+  cols: ['resident_id','patient','type','diagnosis','doctor',
+         'date','notes','prescription','status'],
+  search: ['patient','diagnosis','doctor','notes']
+},
+
+const pick = (cols, body) => {
+  const data = {};
+  cols.forEach((c) => { if (body[c] !== undefined) data[c] = body[c]; });
+  return data;
+};
+
+// List all records (with optional search)
+async function listAll(cfg, params) {
+  let q = supabase.from(cfg.table).select('*')
+    .is('deleted_at', null).order('created_at', { ascending: false });
+  if (params.search && cfg.search.length) {
+    q = q.or(cfg.search.map((c) => `${c}.ilike.%${params.search}%`).join(','));
+  }
+  const { data, error } = await q;
+  throwIf(error);
+  return data || [];
+}
+
+// Create a new health record
+async function create(cfg, body) {
+  const { data, error } = await supabase
+    .from(cfg.table).insert(pick(cfg.cols, body))
+    .select('id').single();
+  throwIf(error);
+  return { ok: true, id: data.id };
+}
+
+// Update an existing health record
+async function update(cfg, id, body) {
+  const { error } = await supabase
+    .from(cfg.table).update(pick(cfg.cols, body)).eq('id', id);
+  throwIf(error);
+  return { ok: true };
+}
+
+// Soft delete / restore / purge
+async function softDelete(cfg, id) {
+  const { error } = await supabase.from(cfg.table)
+    .update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  throwIf(error);
+  return { ok: true };
+}</pre>
+
+<p class="src">Admin/src/services/supabaseApi.js — resident-facing query and new-record notification</p>
+<pre>// GET /user/health-records — residents view their own records
+if (seg[1] === 'health-records' && method === 'GET') {
+  const { data, error } = await supabase.from('health_records').select('*')
+    .eq('patient', fullName).is('deleted_at', null)
+    .order('date', { ascending: false });
+  throwIf(error); return data || [];
+}
+
+// POST /health-records — create also notifies the patient
+// (only if a registered user matches the patient name)
+if (seg[0] === 'health-records' && !seg[1] && method === 'POST') {
+  const res = await create(cfg, body);
+  const { data: users } = await supabase.from('users')
+    .select('id').eq('full_name', body.patient).limit(1);
+  if (users && users.length) {
+    await supabase.from('notifications').insert({
+      type: 'health_record',
+      title: `New Health Record: ${body.type}`,
+      message: `A new ${String(body.type).toLowerCase()} record has been
+                added for you. Diagnosis: ${body.diagnosis}`,
+      recipient: body.patient, priority: 'normal' });
+  }
+  return res;
+}</pre>
+
+<h2>C. Appointment Request Submission (Objective 2)</h2>
+<p class="src">Admin/src/services/supabaseApi.js — POST /user/appointments (booking)</p>
+<pre>if (!seg[2] && method === 'POST') {
+  if (!body.service || !body.date || !body.time)
+    throw fail('Service, date, and time are required.', 400);
+  const limit = await serviceLimit(body.service);
+  const { data: taken, error: e1 } = await supabase
+    .from('appointments').select('id')
+    .eq('date', body.date).eq('time', body.time)
+    .eq('service', body.service).is('deleted_at', null)
+    .not('status', 'in', '("cancelled","rejected")');
+  throwIf(e1);
+  if ((taken || []).length >= limit)
+    throw fail(`This time slot is full (max ${limit} per slot
+                for this service). Please choose another time.`, 409);
+  const { data: appt, error: e2 } = await supabase
+    .from('appointments').insert({
+      user_id: uid, name: fullName, service: body.service,
+      date: body.date, time: body.time,
+      notes: body.notes || '', status: 'pending',
+    }).select('id').single();
+  throwIf(e2);
+  const fd = new Date(body.date).toLocaleDateString('en-PH',
+    { year: 'numeric', month: 'long', day: 'numeric' });
+  await supabase.from('notifications').insert({
+    type: 'Appointment', priority: 'normal',
+    title: 'New appointment booked',
+    message: `${fullName} booked ${body.service} on ${fd} at ${body.time}.
+              ${body.notes ? `Notes: ${body.notes}` : ''}`,
+    recipient: 'All Staff', is_read: false });
+  return { ok: true, id: appt.id };
+}</pre>
+
+<p class="src">Admin/src/services/supabaseApi.js — GET /user/appointments/slots (availability check)</p>
+<pre>if (seg[2] === 'slots' && method === 'GET') {
+  if (!params.date) throw fail('date is required.', 400);
+  const limit = await serviceLimit(params.service);
+  const { data, error } = await supabase.from('appointments').select('time')
+    .eq('date', params.date).eq('service', params.service || '')
+    .is('deleted_at', null)
+    .not('status', 'in', '("cancelled","rejected")');
+  throwIf(error);
+  const slots = {};
+  (data || []).forEach((r) => {
+    slots[r.time] = (slots[r.time] || 0) + 1;
+  });
+  return { limit, slots };
+}</pre>
+
+<h2>D. Appointment Scheduling and Management (Objective 3)</h2>
+<p class="src">Admin/src/services/supabaseApi.js — PATCH /appointments/:id/reschedule</p>
+<pre>if (seg[0] === 'appointments' && seg[2] === 'reschedule' && method === 'PATCH') {
+  const { date, time, note } = body;
+  if (!date || !time) throw fail('date and time are required.', 400);
+  const admin = getAdmin();
+  const handledBy = (admin && (admin.username || admin.name)) || 'Admin';
+
+  // Fetch current appointment
+  const { data: appt, error: fetchErr } = await supabase.from('appointments')
+    .select('user_id, name, service, date, time, notes, status')
+    .eq('id', seg[1]).limit(1).single();
+  if (fetchErr) throw fail(fetchErr.message);
+
+  const oldDate = appt.date;
+  const oldTime = appt.time;
+
+  // Build reschedule note
+  const rescheduleNote = note
+    ? `[RESCHEDULED by ${handledBy}] ${note}`
+    : `[RESCHEDULED by ${handledBy}] Appointment moved
+       from ${oldDate} ${oldTime} to ${date} ${time}.`;
+  const combinedNotes = appt.notes
+    ? `${appt.notes}\n\n${rescheduleNote}` : rescheduleNote;
+
+  // Update appointment — status resets to pending
+  const rescheduleTime = new Date().toISOString();
+  const { error: updateErr } = await supabase.from('appointments')
+    .update({ date, time, notes: combinedNotes, status: 'pending',
+              handled_by: handledBy, updated_at: rescheduleTime })
+    .eq('id', seg[1]);
+  if (updateErr) throw fail(updateErr.message);
+
+  // Create notification for the user
+  const notifTitle = 'Appointment Rescheduled';
+  const notifMsg = note
+    ? `Your appointment for ${appt.service} has been rescheduled
+       to ${date} at ${time}. Note: ${note}`
+    : `Your appointment for ${appt.service} has been rescheduled
+       to ${date} at ${time}.`;
+  let targetUserId = appt.user_id || null;
+  if (!targetUserId && appt.name) {
+    const { data: users } = await supabase.from('users')
+      .select('id').eq('full_name', appt.name).limit(1);
+    if (users && users.length) targetUserId = users[0].id;
+  }
+  await supabase.from('notifications').insert({
+    type: 'Appointment', title: notifTitle, message: notifMsg,
+    recipient: appt.name, priority: 'high',
+    created_at: rescheduleTime,
+    ...(targetUserId ? { user_id: targetUserId } : {}),
+    route: '/user/appointments',
+  });
+
+  // Send FCM push notification
+  if (targetUserId) {
+    supabase.functions.invoke('send-push', {
+      body: {
+        user_id: targetUserId,
+        title: '📅 Appointment Rescheduled',
+        body: `Your ${appt.service || 'appointment'} has been moved
+               to ${date} at ${time}.${note ? ` Note: ${note}` : ''}
+               Tap to view details.`,
+        route: '/user/appointments',
+      },
+    }).catch((e) => console.warn('[push] reschedule send-push failed:',
+        e?.message || e));
+  }
+  return { ok: true, message: 'Appointment rescheduled and user notified.' };
+}</pre>
+
+<p class="src">Admin/src/services/supabaseApi.js — PATCH /appointments/:id/status (approve / reject / complete / cancel)</p>
+<pre>if (seg[0] === 'appointments' && seg[2] === 'status' && method === 'PATCH') {
+  if (!body.status) throw fail('status is required.', 400);
+  const admin = getAdmin();
+  const handledBy = (admin && (admin.username || admin.name)) || 'Admin';
+  const { data: appt } = await supabase.from('appointments')
+    .select('user_id, name, service, date, time, notes')
+    .eq('id', seg[1]).limit(1).single();
+  const { error } = await supabase.from('appointments')
+    .update({ status: body.status, handled_by: handledBy })
+    .eq('id', seg[1]);
+  throwIf(error);
+
+  // Auto-create a health record when the appointment is completed
+  if (body.status === 'completed' && appt) {
+    const healthRecordType =
+      appt.service.includes('Vaccination') ? 'Vaccination' :
+      appt.service.includes('Prenatal')    ? 'Prenatal' :
+      appt.service.includes('Dental')      ? 'Consultation' : 'Consultation';
+    const { data: healthRecord, error: healthRecordError } = await supabase
+      .from('health_records')
+      .insert({
+        patient: appt.name,
+        type: healthRecordType,
+        diagnosis: `Completed appointment: ${appt.service}`,
+        doctor: handledBy,
+        date: appt.date,
+        notes: appt.notes || `Auto-generated from completed appointment
+               on ${new Date().toLocaleDateString()}`,
+        status: 'closed',
+      })
+      .select('id').single();
+    if (!healthRecordError && healthRecord) {
+      await supabase.from('notifications').insert({
+        type: 'health_record',
+        title: `Health Record Created: ${healthRecordType}`,
+        message: `Your completed appointment has been recorded. A new
+                  ${healthRecordType.toLowerCase()} health record has
+                  been added to your profile.`,
+        recipient: appt.name,
+        priority: 'normal',
+      });
+    }
+  }
+
+  // Notify the resident via FCM when the admin acts on their appointment
+  const pushMap = {
+    approved:  { title: '✅ Appointment Approved',  verb: 'approved' },
+    rejected:  { title: '❌ Appointment Rejected',  verb: 'rejected' },
+    completed: { title: '🎉 Appointment Completed', verb: 'marked completed' },
+    cancelled: { title: '🚫 Appointment Cancelled', verb: 'cancelled' },
+  };
+  const meta = pushMap[body.status];
+  if (meta && appt) {
+    let targetUserId = appt.user_id || null;
+    if (!targetUserId && appt.name) {
+      const { data: users } = await supabase.from('users')
+        .select('id').eq('full_name', appt.name).limit(1);
+      if (users && users.length) targetUserId = users[0].id;
+    }
+    if (targetUserId) {
+      const when = appt.date
+        ? ` on ${appt.date}${appt.time ? ` at ${appt.time}` : ''}` : '';
+      supabase.functions.invoke('send-push', {
+        body: {
+          user_id: targetUserId,
+          title: meta.title,
+          body: `Your ${appt.service || 'appointment'}${when}
+                 was ${meta.verb}. Tap to view details.`,
+          route: '/user/appointments',
+        },
+      }).catch((e) => console.warn('[push] appointment send-push failed:',
+          e?.message || e));
+    }
+  }
+  return { ok: true };
+}</pre>
+
+<p class="src">Admin/src/services/supabaseApi.js — resident responses: accept reschedule and send note</p>
+<pre>// PATCH /user/appointments/:id/accept-reschedule
+const { data: apptData, error: fetchErr } = await supabase.from('appointments')
+  .select('id, service, date, time, notes, name')
+  .eq('id', seg[2]).eq('user_id', uid).limit(1).single();
+if (fetchErr || !apptData) throw fail('Appointment not found.', 404);
+const { error: updateErr } = await supabase.from('appointments')
+  .update({ status: 'approved' }).eq('id', seg[2]);
+throwIf(updateErr);
+await supabase.from('notifications').insert({
+  type: 'Appointment', priority: 'normal',
+  title: 'Reschedule Accepted',
+  message: `${apptData.name} accepted the reschedule for
+            ${apptData.service} on ${apptData.date} at ${apptData.time}.`,
+  recipient: 'All Staff', is_read: false,
+});
+
+// POST /user/appointments/:id/send-note
+const userNote = `[NOTE from User] ${note.trim()}`;
+const updatedNotes = apptData.notes
+  ? `${apptData.notes}\n\n${userNote}` : userNote;
+const { error: noteErr } = await supabase.from('appointments')
+  .update({ notes: updatedNotes }).eq('id', seg[2]);
+throwIf(noteErr);
+await supabase.from('notifications').insert({
+  type: 'Appointment', priority: 'normal',
+  title: 'User Sent a Note',
+  message: `${apptData.name} (${apptData.service}): "${note.trim()}"`,
+  recipient: 'All Staff', is_read: false,
+});</pre>
+
+<h2>E. Notification System (Objective 4)</h2>
+<p class="src">Admin/src/services/pushNotificationService.js — FCM registration and device token storage</p>
+<pre>async register(userId) {
+  if (!this.isNative) return;
+  if (!userId) return;
+  this.currentUserId = userId;
+
+  // Ask permission (Android 13+ shows the native dialog here)
+  let perm = await PushNotifications.checkPermissions();
+  if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') {
+    perm = await PushNotifications.requestPermissions();
+  }
+  if (perm.receive !== 'granted') return;
+
+  await this.ensureChannel();
+  await this.cancelLegacyVaccineReminders();
+  this.attachListeners();
+  await PushNotifications.register();   // triggers the 'registration' listener
+  this.registered = true;
+}
+
+// Fired once we receive an FCM token — save it to Supabase
+PushNotifications.addListener('registration', async (token) => {
+  await this.saveToken(token.value);
+});
+
+async saveToken(token) {
+  if (!token || !this.currentUserId) return;
+  const { error } = await supabase.rpc('register_device_token', {
+    p_user_id: Number(this.currentUserId),
+    p_token: token,
+    p_platform: Capacitor.getPlatform(),
+  });
+}
+
+// App in FOREGROUND — mirror the push into a local heads-up banner
+PushNotifications.addListener('pushNotificationReceived', async (notification) => {
+  const route = notification?.data?.route || '/user';
+  await LocalNotifications.schedule({
+    notifications: [{
+      id: Math.floor(Date.now() % 2147483647),
+      channelId: 'vaccination-reminders',
+      title: notification?.title || 'B-Health',
+      body: notification?.body || '',
+      extra: { route },
+      schedule: { at: new Date(Date.now() + 200) },
+    }],
+  });
+});
+
+// User TAPPED the notification — navigate to the relevant page
+PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+  const route = action?.notification?.data?.route || '/user';
+  navigateFromNotification(route);
+});</pre>
+
+<p class="src">Admin/src/services/supabaseApi.js — combined user notification feed (buildUserNotifications)</p>
+<pre>// ── 1. Direct notifications for this user ──
+// Use recipient = fullName because the notifications table
+// stores the patient name, not user_id
+const { data: directNotifs = [] } = await supabase.from('notifications')
+  .select('id, type, title, message, is_read, created_at, route, recipient')
+  .eq('recipient', fullName)
+  .not('recipient', 'eq', 'All Staff')
+  .order('created_at', { ascending: false })
+  .limit(30);
+const directN = (directNotifs || [])
+  .filter((n) => !/vaccin/i.test(`${n.type} ${n.title}`))
+  .map((n) => ({
+    id: `notif_${n.id}`,
+    type: /reschedule/i.test(n.title || '') ? 'reschedule'
+        : n.type === 'health_record' ? 'health_record' : 'appointment',
+    title: n.title || 'Notification',
+    message: n.message || '',
+    timestamp: n.created_at,
+    navigateTo: n.route || '/user/appointments',
+    isRead: n.is_read,
+  }));
+
+// ── 2. Announcements ──
+const { data: anns = [] } = await supabase.from('announcements')
+  .select('id, title, category, body, author, publish_date, created_at')
+  .eq('status', 'published').is('deleted_at', null)
+  .order('created_at', { ascending: false });
+
+// ── 3. Non-pending appointment status changes ──
+const { data: appts = [] } = await supabase.from('appointments')
+  .select('id, service, date, time, status, notes, updated_at')
+  .eq('user_id', uid).is('deleted_at', null)
+  .neq('status', 'pending').order('updated_at', { ascending: false });
+const apptN = (appts || []).map((a) => ({
+  id: `apt_${a.id}`, type: 'appointment', status: a.status,
+  title: `Appointment ${label[a.status] || a.status}`,
+  message: `${a.service} on ${a.date} at ${a.time}`,
+  timestamp: a.updated_at, navigateTo: '/user/appointments',
+}));
+
+// ── 4. Rescheduled appointments ──
+const { data: pendingAppts = [] } = await supabase.from('appointments')
+  .select('id, service, date, time, status, notes, updated_at')
+  .eq('user_id', uid).is('deleted_at', null).eq('status', 'pending')
+  .not('notes', 'is', null).order('updated_at', { ascending: false });
+const reschedN = (pendingAppts || [])
+  .filter((a) => /RESCHEDULED/i.test(a.notes || ''))
+  .map((a) => ({
+    id: `resched_${a.id}`, type: 'reschedule', status: 'rescheduled',
+    title: 'Appointment Rescheduled',
+    timestamp: a.updated_at, navigateTo: '/user/appointments',
+  }));</pre>
+
+<h2>F. Report Generation (Objective 5)</h2>
+<p class="src">Admin/src/pages/admin/Reports.jsx — generateReport (weekly/monthly, date-range picker)</p>
+<pre>const generateReport = async () => {
+  if (!reportModal || !rptStartDate || !rptEndDate) return;
+  setRptLoading(true);
+  try {
+    const isoStart = rptStartDate.toISOString().slice(0, 10);
+    const isoEnd = rptEndDate.toISOString().slice(0, 10);
+
+    if (reportModal === 'overall') {
+      const [apptRes, vaccRes, hrRes] = await Promise.all([
+        supabase.from('appointments')
+          .select('id, name, date, time, status, service, handled_by, notes')
+          .is('deleted_at', null)
+          .gte('date', isoStart).lte('date', isoEnd)
+          .order('date', { ascending: true }),
+        supabase.from('vaccinations')
+          .select('id, patient, date, vaccine, dose, status, administered_by')
+          .is('deleted_at', null)
+          .gte('date', isoStart).lte('date', isoEnd)
+          .order('date', { ascending: true }),
+        supabase.from('health_records')
+          .select('id, patient, type, diagnosis, doctor, date, status, notes')
+          .is('deleted_at', null)
+          .gte('date', isoStart).lte('date', isoEnd)
+          .order('date', { ascending: true }),
+      ]);
+      const appts = apptRes.data || [];
+      const vaccs = vaccRes.data || [];
+      const hrs = hrRes.data || [];
+      const completed = appts.filter(a => a.status === 'completed').length;
+      const rate = appts.length
+        ? Math.round((completed / appts.length) * 100) : 0;
+      setRptData({
+        appointments: appts, vaccinations: vaccs, healthRecords: hrs,
+        totals: {
+          appointments: appts.length, completed,
+          vaccinations: vaccs.length, healthRecords: hrs.length,
+          completionRate: rate,
+        },
+        dateRange: { start: isoStart, end: isoEnd },
+      });
+    } else if (reportModal === 'appointments') {
+      const apptRes = await supabase.from('appointments')
+        .select('id, name, date, time, status, service, handled_by, notes')
+        .is('deleted_at', null)
+        .gte('date', isoStart).lte('date', isoEnd)
+        .order('date', { ascending: true });
+      const appts = apptRes.data || [];
+      const completed = appts.filter(a => a.status === 'completed').length;
+      const pending   = appts.filter(a => a.status === 'pending').length;
+      const approved  = appts.filter(a => a.status === 'approved').length;
+      const rejected  = appts.filter(a => a.status === 'rejected').length;
+      const rate = appts.length
+        ? Math.round((completed / appts.length) * 100) : 0;
+
+      // Build weekly / monthly chart data
+      const chartMap = {};
+      appts.forEach(a => {
+        if (!a.date) return;
+        const d = new Date(a.date);
+        const key = rptDateMode === 'monthly'
+          ? `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
+          : `${d.getFullYear()}-W${Math.ceil((Math.floor(
+              (d - new Date(d.getFullYear(), 0, 1)) / 86400000)
+              + new Date(d.getFullYear(), 0, 1).getDay() + 1) / 7)}`;
+        const label = rptDateMode === 'monthly'
+          ? MONTH_NAMES[d.getMonth()] : `W${key.split('-W')[1]}`;
+        if (!chartMap[key])
+          chartMap[key] = { label, total: 0, completed: 0,
+                            pending: 0, sortKey: key };
+        chartMap[key].total += 1;
+        if (a.status === 'completed') chartMap[key].completed += 1;
+        else if (a.status === 'pending') chartMap[key].pending += 1;
+      });
+
+      // Service breakdown
+      const svcMap = {};
+      appts.forEach(a => {
+        const svc = a.service || 'Other';
+        svcMap[svc] = (svcMap[svc] || 0) + 1;
+      });
+      setRptData({
+        appointments: appts,
+        totals: { total: appts.length, completed, pending,
+                  approved, rejected, rate },
+        chart: Object.values(chartMap)
+          .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
+        serviceBreakdown: Object.entries(svcMap)
+          .map(([name, value]) => ({ name, value }))
+          .sort((a, b) => b.value - a.value),
+        dateRange: { start: isoStart, end: isoEnd },
+      });
+    }
+  } catch (err) {
+    console.error('Report generation error:', err);
+  } finally {
+    setRptLoading(false);
+  }
+};</pre>
+
+<p class="src">Admin/src/pages/admin/Reports.jsx — Excel export with weekly sheets (handleExportExcel)</p>
+<pre>const handleExportExcel = () => {
+  const wb = XLSX.utils.book_new();
+  const today = new Date().toISOString().split('T')[0];
+  const svcLabel = selectedService === 'all' ? 'All Services' : selectedService;
+  const appts = filteredAppointments;
+
+  /* --- Sheet 1: Weekly Summary --- */
+  const weekMap = {};
+  appts.forEach(a => {
+    if (!a.date) return;
+    const { label } = getWeekLabel(a.date);
+    if (!weekMap[label]) weekMap[label] = { week: label, appointments: 0,
+      completed: 0, pending: 0, vaccinations: 0 };
+    weekMap[label].appointments += 1;
+    if (a.status === 'completed') weekMap[label].completed += 1;
+    else weekMap[label].pending += 1;
+  });
+  vaccinations.forEach(v => {
+    if (!v.date) return;
+    if (selectedService !== 'all' &&
+        !v.vaccine?.toLowerCase().includes(selectedService.toLowerCase().split(' ')[0])) return;
+    const { label } = getWeekLabel(v.date);
+    if (!weekMap[label]) weekMap[label] = { week: label, appointments: 0,
+      completed: 0, pending: 0, vaccinations: 0 };
+    weekMap[label].vaccinations += 1;
+  });
+  const summaryRows = Object.values(weekMap);
+  summaryRows.push({
+    week: 'TOTAL',
+    appointments: summaryRows.reduce((s, r) => s + r.appointments, 0),
+    completed: summaryRows.reduce((s, r) => s + r.completed, 0),
+    pending: summaryRows.reduce((s, r) => s + r.pending, 0),
+    vaccinations: summaryRows.reduce((s, r) => s + r.vaccinations, 0),
+  });
+  const ws1 = XLSX.utils.json_to_sheet(summaryRows.map(r => ({
+    'Week': r.week, 'Appointments': r.appointments, 'Completed': r.completed,
+    'Pending': r.pending, 'Vaccinations': r.vaccinations,
+  })));
+  XLSX.utils.book_append_sheet(wb, ws1, 'Weekly Summary');
+
+  /* --- Sheet 2: All Appointments --- */
+  const apptRows = appts.map(a => ({
+    'Date': a.date || '', 'Time': a.time || '', 'Patient': a.name || '',
+    'Service': a.service || '', 'Status': a.status || '',
+    'Handled By': a.handled_by || '', 'Notes': a.notes || '',
+  }));
+  const ws2 = XLSX.utils.json_to_sheet(apptRows);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Appointments');
+
+  /* --- Sheet 3: All Vaccinations --- */
+  const filteredVacc = selectedService === 'all'
+    ? vaccinations
+    : vaccinations.filter(v => v.vaccine?.toLowerCase()
+        .includes(selectedService.toLowerCase().split(' ')[0]));
+  const vaccRows = filteredVacc.map(v => ({
+    'Date': v.date || '', 'Patient': v.patient || '', 'Vaccine': v.vaccine || '',
+    'Dose': v.dose || '', 'Status': v.status || '',
+    'Administered By': v.administered_by || '', 'Site': v.site || '',
+    'Notes': v.notes || '',
+  }));
+  const ws3 = XLSX.utils.json_to_sheet(vaccRows);
+  XLSX.utils.book_append_sheet(wb, ws3, 'Vaccinations');
+
+  /* --- Sheet 4: Service Breakdown --- */
+  const svcRows = serviceBreakdown.map(s => ({
+    'Service': s.name, 'Count': s.value, 'Percentage': `${s.pct}%`,
+  }));
+  svcRows.push({ 'Service': 'TOTAL',
+    'Count': svcRows.reduce((s, r) => s + r.Count, 0),
+    'Percentage': '100%' });
+  const ws4 = XLSX.utils.json_to_sheet(svcRows);
+  XLSX.utils.book_append_sheet(wb, ws4, 'Service Breakdown');
+
+  /* --- Sheet 5: Status Summary --- */
+  const statusRows = [
+    { 'Metric': 'Service', 'Value': svcLabel },
+    { 'Metric': 'Total Appointments', 'Value': totals.totalAppointments },
+    { 'Metric': 'Completed', 'Value': totals.totalCompleted },
+    { 'Metric': 'Pending', 'Value': totals.totalPending },
+    { 'Metric': 'Approved', 'Value': totals.totalApproved },
+    { 'Metric': 'Rejected', 'Value': totals.totalRejected },
+    { 'Metric': 'Vaccinations', 'Value': totals.totalVaccinations },
+    { 'Metric': 'Completion Rate', 'Value': `${totals.completionRate}%` },
+  ];
+  const ws5 = XLSX.utils.json_to_sheet(statusRows);
+  XLSX.utils.book_append_sheet(wb, ws5, 'Status Summary');
+
+  const filename = selectedService === 'all'
+    ? `B-Health-Report-${today}.xlsx`
+    : `B-Health-${svcLabel.replace(/[^a-zA-Z0-9]/g, '')}-Report-${today}.xlsx`;
+  XLSX.writeFile(wb, filename);
+};</pre>
+
+</div>
+
+<script>
+function downloadDoc() {
+  const content = document.getElementById('doc').innerHTML;
+  const html =
+    '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">' +
+    '<head><meta charset="utf-8"><style>' +
+    "body{font-family:'Times New Roman',serif;font-size:12pt;line-height:1.6}" +
+    'h1{font-size:14pt;text-align:center}h2{font-size:12pt}' +
+    'p{margin:0 0 4pt}p.src{font-style:italic;font-size:10pt}' +
+    "pre{font-family:'Courier New',monospace;font-size:8.5pt;line-height:1.3;" +
+    'margin:0 0 14pt;white-space:pre-wrap}' +
+    '</style></head><body>' + content + '</body></html>';
+  const blob = new Blob(['﻿', html], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'B-Health_RelevantCode.doc';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+</script>
+
+</body>
+</html>

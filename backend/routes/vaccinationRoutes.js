@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { auth } = require('../middleware/auth');
 const db   = require('../config/db');
 const crud = require('../controllers/crudHelper')('vaccinations', {
-  columns:    ['resident_id', 'user_id', 'patient', 'age', 'vaccine', 'dose', 'date', 'next_due', 'administered_by', 'site', 'status', 'notes'],
+  columns:    ['resident_id', 'user_id', 'patient', 'age', 'vaccine', 'dose', 'date', 'next_due', 'reminder_time', 'administered_by', 'site', 'status', 'notes'],
   required:   ['patient', 'vaccine', 'dose', 'date'],
   searchCols: ['patient', 'vaccine', 'administered_by'],
 });
@@ -10,17 +10,18 @@ const crud = require('../controllers/crudHelper')('vaccinations', {
 // GET /api/vaccinations/due-soon — overdue / due within 7 days (for admin reminders)
 router.get('/due-soon', auth, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      `SELECT id, patient, age, vaccine, dose, next_due, status
-       FROM vaccinations
-       WHERE deleted_at IS NULL
-         AND (
-           status = 'missed'
-           OR (status = 'scheduled' AND next_due IS NOT NULL AND next_due <= DATE_ADD(CURDATE(), INTERVAL 7 DAY))
-         )
-       ORDER BY next_due ASC
-       LIMIT 30`
-    );
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() + 7);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    const { data: rows, error } = await db
+      .from('vaccinations')
+      .select('id, patient, age, vaccine, dose, next_due, status')
+      .is('deleted_at', null)
+      .or(`status.eq.missed,and(status.eq.scheduled,next_due.lte.${cutoffStr})`)
+      .order('next_due', { ascending: true })
+      .limit(30);
+    if (error) throw error;
     const today = new Date();
     const result = rows.map((v) => {
       const due      = v.next_due ? new Date(v.next_due) : null;
@@ -37,9 +38,12 @@ router.get('/due-soon', auth, async (req, res) => {
 // GET /api/vaccinations/users-list — registered users for admin dropdown
 router.get('/users-list', auth, async (req, res) => {
   try {
-    const [rows] = await db.query(
-      'SELECT id, full_name, username, phone, purok FROM users WHERE is_active = 1 ORDER BY full_name ASC'
-    );
+    const { data: rows, error } = await db
+      .from('users')
+      .select('id, full_name, username, phone, purok')
+      .eq('is_active', true)
+      .order('full_name', { ascending: true });
+    if (error) throw error;
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -52,7 +56,8 @@ router.patch('/:id/status', auth, async (req, res) => {
     const { status } = req.body;
     if (!['scheduled', 'completed', 'missed'].includes(status))
       return res.status(400).json({ error: 'Invalid status.' });
-    await db.query('UPDATE vaccinations SET status = ? WHERE id = ?', [status, req.params.id]);
+    const { error } = await db.from('vaccinations').update({ status }).eq('id', req.params.id);
+    if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -34,14 +34,19 @@ const userAuth = async (req, res, next) => {
     const token = header.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     if (decoded.type !== 'user') return res.status(403).json({ error: 'Forbidden. User token required.' });
-    
-    // Fetch full_name from database
+
+    // ✅ Supabase na
     const db = require('../config/db');
-    const [rows] = await db.query('SELECT full_name FROM users WHERE id = ?', [decoded.id]);
-    if (rows.length > 0) {
+    const { data: rows, error } = await db
+      .from('users')
+      .select('full_name')
+      .eq('id', decoded.id)
+      .limit(1);
+
+    if (!error && rows && rows.length > 0) {
       decoded.full_name = rows[0].full_name;
     }
-    
+
     req.user = decoded;
     next();
   } catch (err) {

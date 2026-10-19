@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
-import { Card, Row, Col, Button, Table, Badge, Dropdown, Modal, Spinner } from 'react-bootstrap';
+import { useNavigate } from 'react-router-dom';
+import { Card, Row, Col, Button, Table, Badge, Dropdown, Modal, Spinner, Form } from 'react-bootstrap';
 import {
   BarChart, Bar, AreaChart, Area, PieChart, Pie, Cell, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -12,6 +13,7 @@ import {
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { supabase } from '../../config/supabase';
+import { appointmentCode } from '../../utils/recordCodes';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -75,6 +77,11 @@ const StatusBadge = ({ status }) => {
 
 /* ════════════════ Main Component ════════════════ */
 const Reports = () => {
+  const navigate = useNavigate();
+  const openHealthRecord = (id) => {
+    if (id) navigate(`/admin/health-records?record=${id}`);
+  };
+  const [viewAppt, setViewAppt] = useState(null);
   const [dateMode, setDateMode] = useState('monthly');
   const [selectedService, setSelectedService] = useState('all');
   const [startDate, setStartDate] = useState(() => {
@@ -100,6 +107,12 @@ const Reports = () => {
   const [rptStartDate, setRptStartDate] = useState(null);
   const [rptEndDate, setRptEndDate] = useState(null);
   const [rptData, setRptData] = useState(null);
+  const [rptStatus, setRptStatus] = useState('all');
+  const rptAppts = useMemo(() => {
+    const list = rptData?.appointments || [];
+    return rptStatus === 'all' ? list : list.filter((a) => a.status === rptStatus);
+  }, [rptData, rptStatus]);
+  const rptStatusLabel = rptStatus === 'all' ? 'All Statuses' : rptStatus.charAt(0).toUpperCase() + rptStatus.slice(1);
   const [rptLoading, setRptLoading] = useState(false);
 
   /* ── Live data state ── */
@@ -545,6 +558,7 @@ const Reports = () => {
     setRptStartDate(d);
     setRptEndDate(new Date());
     setRptData(null);
+    setRptStatus('all');
     setRptLoading(false);
   };
 
@@ -711,6 +725,8 @@ const Reports = () => {
       const summary = [
         { 'Metric': 'Report Type', 'Value': 'Appointments Report' },
         { 'Metric': 'Date Range', 'Value': `${dateRange.start} to ${dateRange.end}` },
+        { 'Metric': 'Status Filter', 'Value': rptStatusLabel },
+        { 'Metric': 'Appointments Listed', 'Value': rptAppts.length },
         { 'Metric': 'Total Appointments', 'Value': rptData.totals.total },
         { 'Metric': 'Completed', 'Value': rptData.totals.completed },
         { 'Metric': 'Pending', 'Value': rptData.totals.pending },
@@ -722,7 +738,7 @@ const Reports = () => {
       ws1['!cols'] = [{ wch: 22 }, { wch: 28 }];
       XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
 
-      const apptRows = rptData.appointments.map(a => ({
+      const apptRows = rptAppts.map(a => ({
         'Date': a.date, 'Time': a.time, 'Patient': a.name, 'Service': a.service,
         'Status': a.status, 'Handled By': a.handled_by || '', 'Notes': a.notes || '',
       }));
@@ -737,7 +753,7 @@ const Reports = () => {
       ws3['!cols'] = [{ wch: 20 }, { wch: 10 }];
       XLSX.utils.book_append_sheet(wb, ws3, 'Service Breakdown');
 
-      XLSX.writeFile(wb, `B-Health-Appointments-Report-${today}.xlsx`);
+      XLSX.writeFile(wb, `B-Health-Appointments${rptStatus === 'all' ? '' : `-${rptStatusLabel}`}-Report-${today}.xlsx`);
 
     } else if (reportModal === 'health-records') {
       const summary = [
@@ -807,16 +823,16 @@ const Reports = () => {
           { label: 'Rejected', value: rptData.totals.rejected },
           { label: 'Rate', value: `${rptData.totals.rate}%` },
         ]},
-        { type: 'subtitle', text: 'All Appointments' },
+        { type: 'subtitle', text: rptStatus === 'all' ? 'All Appointments' : `${rptStatusLabel} Appointments (${rptAppts.length})` },
         { type: 'table', headers: ['Date', 'Time', 'Patient', 'Service', 'Status', 'Handled By'],
-          rows: rptData.appointments.slice(0, 200).map(a => [a.date, a.time || '', a.name || '', a.service || '', a.status || '', a.handled_by || '']) },
+          rows: rptAppts.slice(0, 200).map(a => [a.date, a.time || '', a.name || '', a.service || '', a.status || '', a.handled_by || '']) },
       ];
       if (rptData.serviceBreakdown?.length) {
         sections.push({ type: 'subtitle', text: 'Service Breakdown' });
         sections.push({ type: 'table', headers: ['Service', 'Count'],
           rows: rptData.serviceBreakdown.map(s => [s.name, String(s.value)]) });
       }
-      buildPDF('Appointments Report', sections).save(`B-Health-Appointments-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+      buildPDF('Appointments Report', sections).save(`B-Health-Appointments${rptStatus === 'all' ? '' : `-${rptStatusLabel}`}-Report-${new Date().toISOString().split('T')[0]}.pdf`);
 
     } else if (reportModal === 'health-records') {
       const sections = [
@@ -1229,166 +1245,6 @@ const Reports = () => {
         ))}
       </Row>
 
-      {/* ── Charts ── */}
-      <Row className="g-3 mb-4">
-        <Col xs={12} lg={8}>
-          <Card className="border-0 rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-            <Card.Body className="p-4">
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                  <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>
-                    {selectedService === 'all' ? 'Appointments vs Completed' : `${selectedService} - Appointments vs Completed`}
-                  </span>
-                  <div style={{ fontSize: 11, color: '#9ca3af' }}>
-                    {dateMode === 'weekly' ? 'Weekly' : 'Monthly'} comparison &bull; {filteredAppointments.length} records
-                  </div>
-                </div>
-                <div className="d-flex align-items-center gap-2">
-                  <div className="d-flex align-items-center gap-3 me-3" style={{ fontSize: 11, color: '#6b7280', fontWeight: 500 }}>
-                    <span className="d-flex align-items-center gap-1">
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />
-                      Appointments
-                    </span>
-                    <span className="d-flex align-items-center gap-1">
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
-                      Completed
-                    </span>
-                  </div>
-                  <div className="d-flex gap-1 p-1 rounded-2" style={{ background: '#f3f4f6' }}>
-                    <button onClick={() => setActiveChart('bar')} className="border-0 rounded-2 p-1 px-2"
-                      style={{ background: activeChart === 'bar' ? '#fff' : 'transparent', boxShadow: activeChart === 'bar' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer' }}>
-                      <BarChart3 size={14} color={activeChart === 'bar' ? '#111827' : '#9ca3af'} />
-                    </button>
-                    <button onClick={() => setActiveChart('line')} className="border-0 rounded-2 p-1 px-2"
-                      style={{ background: activeChart === 'line' ? '#fff' : 'transparent', boxShadow: activeChart === 'line' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer' }}>
-                      <TrendingUp size={14} color={activeChart === 'line' ? '#111827' : '#9ca3af'} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {chartData.length === 0 && !loading ? (
-                <div className="d-flex align-items-center justify-content-center" style={{ height: 280, color: '#9ca3af', fontSize: 13 }}>
-                  No appointment data for this period
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={280}>
-                  {activeChart === 'bar' ? (
-                    <BarChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="gBar1" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#3b82f6" /><stop offset="100%" stopColor="#2563eb" />
-                        </linearGradient>
-                        <linearGradient id="gBar2" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#22c55e" /><stop offset="100%" stopColor="#16a34a" />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                      <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Bar dataKey="appointments" fill="url(#gBar1)" radius={[6, 6, 0, 0]} barSize={dateMode === 'weekly' ? 28 : 18} />
-                      <Bar dataKey="completed" fill="url(#gBar2)" radius={[6, 6, 0, 0]} barSize={dateMode === 'weekly' ? 28 : 18} />
-                    </BarChart>
-                  ) : (
-                    <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                      <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                      <Tooltip content={<ChartTooltip />} />
-                      <Line type="monotone" dataKey="appointments" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4, fill: '#3b82f6' }} />
-                      <Line type="monotone" dataKey="completed" stroke="#16a34a" strokeWidth={2.5} dot={{ r: 4, fill: '#16a34a' }} />
-                    </LineChart>
-                  )}
-                </ResponsiveContainer>
-              )}
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col xs={12} lg={4}>
-          <Card className="border-0 rounded-4 h-100 bh-fade-up"
-            style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)', animationDelay: '0.1s' }}>
-            <Card.Body className="p-4">
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                  <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>Service Breakdown</span>
-                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{filteredAppointments.length} total appointments</div>
-                </div>
-                <button className="border-0 p-1 rounded-2 bg-transparent" onClick={handleExportServices} title="Export">
-                  <Download size={14} color="#6b7280" />
-                </button>
-              </div>
-              {serviceBreakdown.length === 0 ? (
-                <div className="d-flex align-items-center justify-content-center" style={{ height: 170, color: '#9ca3af', fontSize: 13 }}>
-                  No services data
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={170}>
-                  <PieChart>
-                    <Pie data={serviceBreakdown} dataKey="value" nameKey="name"
-                      innerRadius={48} outerRadius={72} paddingAngle={3} strokeWidth={0}>
-                      {serviceBreakdown.map((s, i) => <Cell key={i} fill={s.color} />)}
-                    </Pie>
-                    <Tooltip content={<ChartTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-              <div className="d-flex flex-column gap-2 mt-3">
-                {serviceBreakdown.map((s) => (
-                  <div key={s.name} className="d-flex align-items-center gap-2" style={{ fontSize: 12 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: s.color, display: 'inline-block', flexShrink: 0 }} />
-                    <span style={{ color: '#374151', fontWeight: 500, flex: 1 }}>{s.name}</span>
-                    <div className="flex-grow-1 mx-2" style={{ height: 4, background: '#f3f4f6', borderRadius: 2, maxWidth: 60 }}>
-                      <div style={{ width: `${s.pct}%`, height: '100%', background: s.color, borderRadius: 2, transition: 'width 0.6s ease' }} />
-                    </div>
-                    <span style={{ color: '#6b7280', fontWeight: 600, minWidth: 28, textAlign: 'right' }}>{s.value}</span>
-                  </div>
-                ))}
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* ── Vaccination Trend ── */}
-      <Card className="border-0 rounded-4 mb-4 bh-fade-up"
-        style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)', animationDelay: '0.15s' }}>
-        <Card.Body className="p-4">
-          <div className="d-flex justify-content-between align-items-center mb-3">
-            <div>
-              <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>
-                {selectedService === 'all' ? 'Vaccination Trend' : `${selectedService} - Vaccination Trend`}
-              </span>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>{dateMode === 'weekly' ? 'Weekly' : 'Monthly'} vaccination count</div>
-            </div>
-            <Badge pill style={{ background: '#fef3c7', color: '#b45309', fontWeight: 600, fontSize: 11, padding: '6px 12px' }}>
-              <Syringe size={12} className="me-1" /> {fmtNum(totals.totalVaccinations)} total
-            </Badge>
-          </div>
-          {chartData.length === 0 && !loading ? (
-            <div className="d-flex align-items-center justify-content-center" style={{ height: 200, color: '#9ca3af', fontSize: 13 }}>
-              No vaccination data for this period
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gVacc" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                <Tooltip content={<ChartTooltip />} />
-                <Area type="monotone" dataKey="vaccinations" stroke="#f59e0b" strokeWidth={2.5} fill="url(#gVacc)" dot={{ r: 3, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </Card.Body>
-      </Card>
-
       {/* ── Report Generation Cards (Overall / Appointments / Health Records) ── */}
       <Row className="g-3 mb-4">
         {/* Overall Report */}
@@ -1560,6 +1416,166 @@ const Reports = () => {
                 </Col>
               ))}
             </Row>
+          )}
+        </Card.Body>
+      </Card>
+
+      {/* ── Charts ── */}
+      <Row className="g-3 mb-4">
+        <Col xs={12} lg={8}>
+          <Card className="border-0 rounded-4 h-100 bh-fade-up" style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
+            <Card.Body className="p-4">
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                  <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>
+                    {selectedService === 'all' ? 'Appointments vs Completed' : `${selectedService} - Appointments vs Completed`}
+                  </span>
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                    {dateMode === 'weekly' ? 'Weekly' : 'Monthly'} comparison &bull; {filteredAppointments.length} records
+                  </div>
+                </div>
+                <div className="d-flex align-items-center gap-2">
+                  <div className="d-flex align-items-center gap-3 me-3" style={{ fontSize: 11, color: '#6b7280', fontWeight: 500 }}>
+                    <span className="d-flex align-items-center gap-1">
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', display: 'inline-block' }} />
+                      Appointments
+                    </span>
+                    <span className="d-flex align-items-center gap-1">
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }} />
+                      Completed
+                    </span>
+                  </div>
+                  <div className="d-flex gap-1 p-1 rounded-2" style={{ background: '#f3f4f6' }}>
+                    <button onClick={() => setActiveChart('bar')} className="border-0 rounded-2 p-1 px-2"
+                      style={{ background: activeChart === 'bar' ? '#fff' : 'transparent', boxShadow: activeChart === 'bar' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer' }}>
+                      <BarChart3 size={14} color={activeChart === 'bar' ? '#111827' : '#9ca3af'} />
+                    </button>
+                    <button onClick={() => setActiveChart('line')} className="border-0 rounded-2 p-1 px-2"
+                      style={{ background: activeChart === 'line' ? '#fff' : 'transparent', boxShadow: activeChart === 'line' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none', cursor: 'pointer' }}>
+                      <TrendingUp size={14} color={activeChart === 'line' ? '#111827' : '#9ca3af'} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              {chartData.length === 0 && !loading ? (
+                <div className="d-flex align-items-center justify-content-center" style={{ height: 280, color: '#9ca3af', fontSize: 13 }}>
+                  No appointment data for this period
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  {activeChart === 'bar' ? (
+                    <BarChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="gBar1" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#3b82f6" /><stop offset="100%" stopColor="#2563eb" />
+                        </linearGradient>
+                        <linearGradient id="gBar2" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#22c55e" /><stop offset="100%" stopColor="#16a34a" />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                      <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Bar dataKey="appointments" fill="url(#gBar1)" radius={[6, 6, 0, 0]} barSize={dateMode === 'weekly' ? 28 : 18} />
+                      <Bar dataKey="completed" fill="url(#gBar2)" radius={[6, 6, 0, 0]} barSize={dateMode === 'weekly' ? 28 : 18} />
+                    </BarChart>
+                  ) : (
+                    <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                      <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Line type="monotone" dataKey="appointments" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 4, fill: '#3b82f6' }} />
+                      <Line type="monotone" dataKey="completed" stroke="#16a34a" strokeWidth={2.5} dot={{ r: 4, fill: '#16a34a' }} />
+                    </LineChart>
+                  )}
+                </ResponsiveContainer>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col xs={12} lg={4}>
+          <Card className="border-0 rounded-4 h-100 bh-fade-up"
+            style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)', animationDelay: '0.1s' }}>
+            <Card.Body className="p-4">
+              <div className="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                  <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>Service Breakdown</span>
+                  <div style={{ fontSize: 11, color: '#9ca3af' }}>{filteredAppointments.length} total appointments</div>
+                </div>
+                <button className="border-0 p-1 rounded-2 bg-transparent" onClick={handleExportServices} title="Export">
+                  <Download size={14} color="#6b7280" />
+                </button>
+              </div>
+              {serviceBreakdown.length === 0 ? (
+                <div className="d-flex align-items-center justify-content-center" style={{ height: 170, color: '#9ca3af', fontSize: 13 }}>
+                  No services data
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={170}>
+                  <PieChart>
+                    <Pie data={serviceBreakdown} dataKey="value" nameKey="name"
+                      innerRadius={48} outerRadius={72} paddingAngle={3} strokeWidth={0}>
+                      {serviceBreakdown.map((s, i) => <Cell key={i} fill={s.color} />)}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+              <div className="d-flex flex-column gap-2 mt-3">
+                {serviceBreakdown.map((s) => (
+                  <div key={s.name} className="d-flex align-items-center gap-2" style={{ fontSize: 12 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: s.color, display: 'inline-block', flexShrink: 0 }} />
+                    <span style={{ color: '#374151', fontWeight: 500, flex: 1 }}>{s.name}</span>
+                    <div className="flex-grow-1 mx-2" style={{ height: 4, background: '#f3f4f6', borderRadius: 2, maxWidth: 60 }}>
+                      <div style={{ width: `${s.pct}%`, height: '100%', background: s.color, borderRadius: 2, transition: 'width 0.6s ease' }} />
+                    </div>
+                    <span style={{ color: '#6b7280', fontWeight: 600, minWidth: 28, textAlign: 'right' }}>{s.value}</span>
+                  </div>
+                ))}
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* ── Vaccination Trend ── */}
+      <Card className="border-0 rounded-4 mb-4 bh-fade-up"
+        style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)', animationDelay: '0.15s' }}>
+        <Card.Body className="p-4">
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <span className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>
+                {selectedService === 'all' ? 'Vaccination Trend' : `${selectedService} - Vaccination Trend`}
+              </span>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>{dateMode === 'weekly' ? 'Weekly' : 'Monthly'} vaccination count</div>
+            </div>
+            <Badge pill style={{ background: '#fef3c7', color: '#b45309', fontWeight: 600, fontSize: 11, padding: '6px 12px' }}>
+              <Syringe size={12} className="me-1" /> {fmtNum(totals.totalVaccinations)} total
+            </Badge>
+          </div>
+          {chartData.length === 0 && !loading ? (
+            <div className="d-flex align-items-center justify-content-center" style={{ height: 200, color: '#9ca3af', fontSize: 13 }}>
+              No vaccination data for this period
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gVacc" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                <Tooltip content={<ChartTooltip />} />
+                <Area type="monotone" dataKey="vaccinations" stroke="#f59e0b" strokeWidth={2.5} fill="url(#gVacc)" dot={{ r: 3, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }} />
+              </AreaChart>
+            </ResponsiveContainer>
           )}
         </Card.Body>
       </Card>
@@ -1822,7 +1838,7 @@ const Reports = () => {
                   </thead>
                   <tbody style={{ fontSize: 12 }}>
                     {svcReportData.appointments.slice(0, 20).map((a) => (
-                      <tr key={a.id}>
+                      <tr key={a.id} onClick={() => setViewAppt(a)} style={{ cursor: 'pointer' }} title="View appointment details">
                         <td className="px-3 py-2" style={{ color: '#6b7280' }}>{a.date}</td>
                         <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{a.name}</td>
                         <td className="py-2"><StatusBadge status={a.status} /></td>
@@ -1988,7 +2004,7 @@ const Reports = () => {
                           </thead>
                           <tbody style={{ fontSize: 12 }}>
                             {rptData.appointments.slice(0, 15).map(a => (
-                              <tr key={a.id}>
+                              <tr key={a.id} onClick={() => setViewAppt(a)} style={{ cursor: 'pointer' }} title="View appointment details">
                                 <td className="px-3 py-2" style={{ color: '#6b7280' }}>{a.date}</td>
                                 <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{a.name}</td>
                                 <td className="py-2"><StatusBadge status={a.status} /></td>
@@ -2009,7 +2025,7 @@ const Reports = () => {
                           </thead>
                           <tbody style={{ fontSize: 12 }}>
                             {rptData.healthRecords.slice(0, 15).map(r => (
-                              <tr key={r.id}>
+                              <tr key={r.id} onClick={() => openHealthRecord(r.id)} style={{ cursor: 'pointer' }} title="Open health record">
                                 <td className="px-3 py-2" style={{ color: '#6b7280' }}>{r.date}</td>
                                 <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{r.patient}</td>
                                 <td className="py-2" style={{ color: '#6b7280' }}>{r.type}</td>
@@ -2074,8 +2090,22 @@ const Reports = () => {
                       </div>
                     </div>
                   )}
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
-                    All Appointments ({rptData.appointments.length})
+                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                      {rptStatus === 'all' ? 'All Appointments' : `${rptStatusLabel} Appointments`} ({rptAppts.length})
+                    </div>
+                    <div className="d-flex align-items-center gap-2">
+                      <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>Status</span>
+                      <Form.Select size="sm" value={rptStatus} onChange={(e) => setRptStatus(e.target.value)}
+                        style={{ fontSize: 12, minWidth: 150, borderRadius: 8 }}>
+                        <option value="all">All ({rptData.appointments.length})</option>
+                        {['pending', 'approved', 'completed', 'rejected', 'cancelled'].map((s) => (
+                          <option key={s} value={s}>
+                            {s.charAt(0).toUpperCase() + s.slice(1)} ({rptData.appointments.filter((a) => a.status === s).length})
+                          </option>
+                        ))}
+                      </Form.Select>
+                    </div>
                   </div>
                   <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
                     <Table hover size="sm" className="mb-0 align-middle">
@@ -2085,14 +2115,17 @@ const Reports = () => {
                         </tr>
                       </thead>
                       <tbody style={{ fontSize: 12 }}>
-                        {rptData.appointments.slice(0, 20).map(a => (
-                          <tr key={a.id}>
+                        {rptAppts.map(a => (
+                          <tr key={a.id} onClick={() => setViewAppt(a)} style={{ cursor: 'pointer' }} title="View appointment details">
                             <td className="px-3 py-2" style={{ color: '#6b7280' }}>{a.date}</td>
                             <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{a.name}</td>
                             <td className="py-2" style={{ color: '#6b7280' }}>{a.service}</td>
                             <td className="py-2"><StatusBadge status={a.status} /></td>
                           </tr>
                         ))}
+                        {rptAppts.length === 0 && (
+                          <tr><td colSpan={4} className="text-center py-3" style={{ color: '#9ca3af' }}>No {rptStatusLabel.toLowerCase()} appointments in this period.</td></tr>
+                        )}
                       </tbody>
                     </Table>
                   </div>
@@ -2164,7 +2197,7 @@ const Reports = () => {
                       </thead>
                       <tbody style={{ fontSize: 12 }}>
                         {rptData.healthRecords.slice(0, 20).map(r => (
-                          <tr key={r.id}>
+                          <tr key={r.id} onClick={() => openHealthRecord(r.id)} style={{ cursor: 'pointer' }} title="Open health record">
                             <td className="px-3 py-2" style={{ color: '#6b7280' }}>{r.date}</td>
                             <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{r.patient}</td>
                             <td className="py-2" style={{ color: '#6b7280' }}>{r.type}</td>
@@ -2202,6 +2235,54 @@ const Reports = () => {
             style={{ background: '#0f172a' }}>
             <FileSpreadsheet size={14} /> Excel
           </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Appointment detail (view only) */}
+      <Modal show={!!viewAppt} onHide={() => setViewAppt(null)} centered
+        style={{ zIndex: 1065 }} backdropClassName="bh-stacked-backdrop">
+        <Modal.Header closeButton style={{ borderBottom: '1px solid #f1f5f9' }}>
+          <Modal.Title className="d-flex align-items-center gap-2" style={{ fontSize: 16, fontWeight: 700 }}>
+            <Calendar size={18} color="#10b981" /> Appointment Details
+          </Modal.Title>
+        </Modal.Header>
+        {viewAppt && (
+          <Modal.Body className="p-4">
+            <div className="d-flex align-items-center justify-content-between mb-3">
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: '#0f172a' }}>{viewAppt.name || '—'}</div>
+                <div style={{ fontSize: 12, color: '#047857', fontWeight: 700, fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }}>{appointmentCode(viewAppt)}</div>
+              </div>
+              <StatusBadge status={viewAppt.status} />
+            </div>
+            <Row className="g-2">
+              {[
+                ['Service', viewAppt.service],
+                ['Date', viewAppt.date ? new Date(`${viewAppt.date}T00:00:00`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''],
+                ['Time', (() => {
+                  const m = String(viewAppt.time || '').match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+                  return m ? `${Number(m[1]) % 12 || 12}:${m[2]} ${Number(m[1]) >= 12 ? 'PM' : 'AM'}` : viewAppt.time;
+                })()],
+                ['Handled By', viewAppt.handled_by],
+              ].map(([label, value]) => (
+                <Col xs={6} key={label}>
+                  <div className="p-2 rounded-3 h-100" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>{label}</div>
+                    <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600 }}>{value || '—'}</div>
+                  </div>
+                </Col>
+              ))}
+            </Row>
+            <div className="mt-3">
+              <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', marginBottom: 4 }}>Notes</div>
+              <div className="p-2 rounded-3" style={{ background: '#fefce8', border: '1px solid #fde68a', fontSize: 12, color: '#713f12', whiteSpace: 'pre-wrap' }}>
+                {viewAppt.notes || 'No notes.'}
+              </div>
+            </div>
+          </Modal.Body>
+        )}
+        <Modal.Footer style={{ borderTop: '1px solid #f1f5f9' }}>
+          <Button size="sm" variant="secondary" onClick={() => setViewAppt(null)}>Close</Button>
         </Modal.Footer>
       </Modal>
     </div>

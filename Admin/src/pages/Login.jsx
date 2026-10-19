@@ -67,7 +67,7 @@ const Login = () => {
           <span style={{ width: 7, height: 7, borderRadius: '50%', backgroundColor: '#22c55e', display: 'inline-block', boxShadow: '0 0 6px #22c55e' }} />
           <span>SYSTEM ONLINE</span>
           <span style={{ color: '#475569' }}>.</span>
-          <span className="d-none d-sm-inline">B-HEALTH MANAGEMENT INFORMATION SYSTEM</span>
+          <span className="d-none d-sm-inline">B-HEALTH: BARANGAY DIGITAL HEALTH SYSTEM</span>
         </div>
         <div className="d-flex align-items-center gap-2">
           <Clock size={11} color="#64748b" />
@@ -88,14 +88,11 @@ const Login = () => {
             </div>
             <div>
               <div style={{ fontSize: 17, fontWeight: 700, color: '#f8fafc', letterSpacing: '-0.01em' }}>B-Health</div>
-              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Management Information System</div>
+              <div style={{ fontSize: 10, color: '#64748b', fontWeight: 500, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Barangay Digital Health System</div>
             </div>
           </div>
 
           <div style={{ position: 'relative', zIndex: 1, maxWidth: 380 }}>
-            <div style={{ fontSize: 11, color: '#475569', fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 18, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-              Administrative Console
-            </div>
             <h1 style={{ fontSize: 30, fontWeight: 700, color: '#f8fafc', lineHeight: 1.3, letterSpacing: '-0.02em', marginBottom: 18 }}>
               Barangay Health Center<br />
               <span style={{ color: '#34d399' }}>Operations Dashboard</span>
@@ -116,7 +113,7 @@ const Login = () => {
             <div style={{ height: 1, backgroundColor: '#1e293b', marginBottom: 16 }} />
             <div className="d-flex align-items-center justify-content-between">
               <span style={{ fontSize: 11, color: '#475569' }}>v2.4.1 . Build 2026.09.14</span>
-              <span style={{ fontSize: 11, color: '#475569' }}>2026 B-Health MIS</span>
+              <span style={{ fontSize: 11, color: '#475569' }}>2026 B-Health: Barangay Digital Health System</span>
             </div>
           </div>
         </div>

@@ -9,7 +9,6 @@ const app = express();
 // ── Middleware ──
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow: no origin, localhost/127, Capacitor Android (capacitor://localhost), Ionic (ionic://localhost)
     if (
       !origin ||
       /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
@@ -37,6 +36,14 @@ app.use('/api/notifications',       require('./routes/notificationRoutes'));
 app.use('/api/user/appointments',   require('./routes/userAppointmentRoutes'));
 app.use('/api/user',                require('./routes/userRoutes'));
 
+// ── Root ──
+app.get('/', (req, res) => res.json({
+  name: 'B-Health API',
+  status: 'running',
+  message: 'This is the backend API server. The frontend runs separately (e.g. http://localhost:5173).',
+  health: '/api/health',
+}));
+
 // ── Health check ──
 app.get('/api/health', (req, res) => res.json({ status: 'ok', time: new Date() }));
 
@@ -49,15 +56,20 @@ app.use((err, req, res, next) => {
 // ── Start ──
 const PORT = process.env.PORT || 5000;
 
-db.getConnection()
-  .then((conn) => {
-    console.log('✓ MySQL connected');
-    conn.release();
+async function start() {
+  try {
+    // Test Supabase connection
+    const { error } = await db.from('admins').select('id').limit(1);
+    if (error) throw error;
+    console.log('✓ Supabase connected');
+
     const { server, io } = setupSocket(app);
     server.listen(PORT, () => console.log(`✓ Server running on http://localhost:${PORT}`));
     global.io = io;
-  })
-  .catch((err) => {
-    console.error('✗ MySQL connection failed:', err.message);
+  } catch (err) {
+    console.error('✗ Supabase connection failed:', err.message);
     process.exit(1);
-  });
+  }
+}
+
+start();

@@ -4,9 +4,13 @@ import { useUserAuth, userApi } from '../../context/UserAuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { supabase } from '../../config/supabase';
 import {
-  User, Mail, Phone, MapPin, Calendar, Heart, Shield,
+  User, Mail, Phone, MapPin, Calendar, Heart,
   Edit3, Save, Camera, AlertTriangle, CheckCircle, Loader2,
 } from 'lucide-react';
+
+const PUROKS = Array.from({ length: 16 }, (_, i) => `Purok ${i + 1}`);
+
+const FieldError = ({ msg }) => (msg ? <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>{msg}</div> : null);
 
 const splitName = (full) => {
   const parts = (full || '').trim().split(/\s+/).filter(Boolean);
@@ -29,6 +33,7 @@ const UserProfile = () => {
   const { currentUser, refreshUser } = useUserAuth();
   const { t } = useLanguage();
   const [isEditing, setIsEditing] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedMsg, setSavedMsg] = useState('');
@@ -132,13 +137,28 @@ const UserProfile = () => {
     }
   };
 
+  const validate = () => {
+    const e = {};
+    if (!profile.firstName.trim()) e.firstName = 'First name is required.';
+    if (!profile.lastName.trim()) e.lastName = 'Last name is required.';
+    if (profile.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(profile.email.trim())) e.email = 'Enter a valid email.';
+    if (!profile.phone.trim()) e.phone = 'Phone number is required.';
+    else if (!/^0?9\d{9}$/.test(profile.phone.replace(/[\s-]/g, ''))) e.phone = 'Enter a valid mobile number (e.g. 09171234567).';
+    if (profile.birthdate && new Date(profile.birthdate) > new Date()) e.birthdate = 'Birthdate cannot be in the future.';
+    if (!profile.address) e.address = 'Please select your purok.';
+    return e;
+  };
+
   const handleSave = async () => {
+    const errs = validate();
+    setFieldErrors(errs);
+    if (Object.keys(errs).length) return;
     setSaving(true);
     try {
       const updated = await userApi.patch('/auth/user/me', {
-        full_name: `${profile.firstName} ${profile.lastName}`.trim(),
-        email: profile.email,
-        phone: profile.phone,
+        full_name: `${profile.firstName.trim()} ${profile.lastName.trim()}`.trim(),
+        email: profile.email.trim(),
+        phone: profile.phone.replace(/[\s-]/g, ''),
         purok: profile.address,
         birthdate: profile.birthdate,
         gender: profile.gender,
@@ -160,6 +180,7 @@ const UserProfile = () => {
 
   const handleCancel = () => {
     setIsEditing(false);
+    setFieldErrors({});
     userApi.get('/auth/user/me').then(applyData).catch(() => {});
   };
 
@@ -202,35 +223,6 @@ const UserProfile = () => {
             Manage your personal information and preferences
           </p>
         </div>
-        {!isEditing ? (
-          <Button
-            className="d-flex align-items-center gap-2 border-0"
-            style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', fontSize: 13, fontWeight: 600 }}
-            onClick={() => setIsEditing(true)}
-          >
-            <Edit3 size={16} /> {t('editProfile')}
-          </Button>
-        ) : (
-          <div className="d-flex gap-2">
-            <Button
-              variant="light"
-              className="border"
-              style={{ fontSize: 13 }}
-              onClick={handleCancel}
-              disabled={saving}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="d-flex align-items-center gap-2 border-0"
-              style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', fontSize: 13, fontWeight: 600 }}
-              onClick={handleSave}
-              disabled={saving}
-            >
-              <Save size={16} /> {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Success/Error Message */}
@@ -280,7 +272,7 @@ const UserProfile = () => {
                     style={{
                       width: 100,
                       height: 100,
-                      background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                      background: 'linear-gradient(135deg, #0f172a, #1e293b)',
                       fontSize: 32,
                     }}
                   >
@@ -317,7 +309,7 @@ const UserProfile = () => {
 
               <div className="d-flex justify-content-center gap-2 flex-wrap">
                 {profile.birthdate && (
-                  <Badge style={{ backgroundColor: '#dbeafe', color: '#1d4ed8', fontSize: 11 }}>
+                  <Badge style={{ backgroundColor: '#f1f5f9', color: '#0f172a', fontSize: 11 }}>
                     {getAge(profile.birthdate)} years old
                   </Badge>
                 )}
@@ -376,10 +368,42 @@ const UserProfile = () => {
         <Col xs={12} lg={8}>
           <Card className="border rounded-4" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
             <Card.Body className="p-4">
-              <h6 className="fw-bold mb-4" style={{ fontSize: 14, color: '#111827' }}>
-                <User size={16} className="me-2" style={{ color: '#1d4ed8' }} />
-                {t('personalInfo')}
-              </h6>
+              <div className="d-flex justify-content-between align-items-center mb-4 gap-2">
+                <h6 className="fw-bold mb-0" style={{ fontSize: 14, color: '#111827' }}>
+                  <User size={16} className="me-2" style={{ color: '#0f172a' }} />
+                  {t('personalInfo')}
+                </h6>
+                {!isEditing ? (
+                  <Button
+                    size="sm"
+                    className="d-flex align-items-center gap-1 border-0"
+                    style={{ background: 'linear-gradient(135deg, #0f172a, #1e293b)', fontSize: 12, fontWeight: 600 }}
+                    onClick={() => { setFieldErrors({}); setIsEditing(true); }}
+                  >
+                    <Edit3 size={14} /> Edit
+                  </Button>
+                ) : (
+                  <div className="d-flex gap-2">
+                    <Button size="sm" variant="light" className="border" style={{ fontSize: 12 }} onClick={handleCancel} disabled={saving}>
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="d-flex align-items-center gap-1 border-0"
+                      style={{ background: 'linear-gradient(135deg, #0d9488, #0f766e)', fontSize: 12, fontWeight: 600 }}
+                      onClick={handleSave}
+                      disabled={saving}
+                    >
+                      <Save size={14} /> {saving ? 'Saving...' : 'Save'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {isEditing && (
+                <div className="mb-3 p-2 px-3 rounded-3" style={{ backgroundColor: '#f0fdfa', border: '1px solid #99f6e4', fontSize: 12, color: '#0f766e' }}>
+                  You can now edit your information. Tap <strong>Save</strong> when done.
+                </div>
+              )}
 
               <Row className="g-3">
                 <Col xs={12} md={6}>
@@ -390,8 +414,10 @@ const UserProfile = () => {
                       value={profile.firstName}
                       onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
                       disabled={!isEditing}
+                      isInvalid={!!fieldErrors.firstName}
                       style={{ fontSize: 13 }}
                     />
+                    <FieldError msg={fieldErrors.firstName} />
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={6}>
@@ -402,8 +428,10 @@ const UserProfile = () => {
                       value={profile.lastName}
                       onChange={(e) => setProfile({ ...profile, lastName: e.target.value })}
                       disabled={!isEditing}
+                      isInvalid={!!fieldErrors.lastName}
                       style={{ fontSize: 13 }}
                     />
+                    <FieldError msg={fieldErrors.lastName} />
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={6}>
@@ -417,8 +445,11 @@ const UserProfile = () => {
                       value={profile.email}
                       onChange={(e) => setProfile({ ...profile, email: e.target.value })}
                       disabled={!isEditing}
+                      isInvalid={!!fieldErrors.email}
+                      placeholder={isEditing ? 'name@example.com (optional)' : ''}
                       style={{ fontSize: 13 }}
                     />
+                    <FieldError msg={fieldErrors.email} />
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={6}>
@@ -431,8 +462,13 @@ const UserProfile = () => {
                       value={profile.phone}
                       onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                       disabled={!isEditing}
+                      isInvalid={!!fieldErrors.phone}
+                      type="tel"
+                      inputMode="numeric"
+                      placeholder={isEditing ? '09XXXXXXXXX' : ''}
                       style={{ fontSize: 13 }}
                     />
+                    <FieldError msg={fieldErrors.phone} />
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={6}>
@@ -446,8 +482,11 @@ const UserProfile = () => {
                       value={profile.birthdate}
                       onChange={(e) => setProfile({ ...profile, birthdate: e.target.value })}
                       disabled={!isEditing}
+                      isInvalid={!!fieldErrors.birthdate}
+                      max={new Date().toISOString().slice(0, 10)}
                       style={{ fontSize: 13 }}
                     />
+                    <FieldError msg={fieldErrors.birthdate} />
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={6}>
@@ -471,92 +510,19 @@ const UserProfile = () => {
                     <Form.Label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
                       <MapPin size={12} className="me-1" /> {t('address')}
                     </Form.Label>
-                    <Form.Control
+                    <Form.Select
                       size="sm"
                       value={profile.address}
                       onChange={(e) => setProfile({ ...profile, address: e.target.value })}
                       disabled={!isEditing}
-                      style={{ fontSize: 13 }}
-                    />
-                  </Form.Group>
-                </Col>
-              </Row>
-            </Card.Body>
-          </Card>
-
-          {/* Medical Information */}
-          <Card className="border rounded-4 mt-4" style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-            <Card.Body className="p-4">
-              <h6 className="fw-bold mb-4" style={{ fontSize: 14, color: '#111827' }}>
-                <Heart size={16} className="me-2" style={{ color: '#dc2626' }} />
-                Medical Information
-              </h6>
-
-              <Row className="g-3">
-                <Col xs={12} md={4}>
-                  <Form.Group>
-                    <Form.Label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{t('bloodType')}</Form.Label>
-                    <Form.Select
-                      size="sm"
-                      value={profile.bloodType}
-                      onChange={(e) => setProfile({ ...profile, bloodType: e.target.value })}
-                      disabled={!isEditing}
+                      isInvalid={!!fieldErrors.address}
                       style={{ fontSize: 13 }}
                     >
-                      <option value="">Select Blood Type</option>
-                      <option value="A+">A+</option>
-                      <option value="A-">A-</option>
-                      <option value="B+">B+</option>
-                      <option value="B-">B-</option>
-                      <option value="AB+">AB+</option>
-                      <option value="AB-">AB-</option>
-                      <option value="O+">O+</option>
-                      <option value="O-">O-</option>
+                      <option value="">Select Purok</option>
+                      {profile.address && !PUROKS.includes(profile.address) && <option value={profile.address}>{profile.address}</option>}
+                      {PUROKS.map((p) => <option key={p} value={p}>{p}</option>)}
                     </Form.Select>
-                  </Form.Group>
-                </Col>
-                <Col xs={12} md={4}>
-                  <Form.Group>
-                    <Form.Label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{t('civilStatus')}</Form.Label>
-                    <Form.Select
-                      size="sm"
-                      value={profile.civilStatus}
-                      onChange={(e) => setProfile({ ...profile, civilStatus: e.target.value })}
-                      disabled={!isEditing}
-                      style={{ fontSize: 13 }}
-                    >
-                      <option value="">Select Status</option>
-                      <option value="Single">Single</option>
-                      <option value="Married">Married</option>
-                      <option value="Widowed">Widowed</option>
-                      <option value="Separated">Separated</option>
-                    </Form.Select>
-                  </Form.Group>
-                </Col>
-                <Col xs={12} md={4}>
-                  <Form.Group>
-                    <Form.Label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>{t('occupation')}</Form.Label>
-                    <Form.Control
-                      size="sm"
-                      value={profile.occupation}
-                      onChange={(e) => setProfile({ ...profile, occupation: e.target.value })}
-                      disabled={!isEditing}
-                      style={{ fontSize: 13 }}
-                    />
-                  </Form.Group>
-                </Col>
-                <Col xs={12} md={6}>
-                  <Form.Group>
-                    <Form.Label style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
-                      <Shield size={12} className="me-1" /> {t('philhealthNo')}
-                    </Form.Label>
-                    <Form.Control
-                      size="sm"
-                      value={profile.philhealthNo}
-                      onChange={(e) => setProfile({ ...profile, philhealthNo: e.target.value })}
-                      disabled={!isEditing}
-                      style={{ fontSize: 13 }}
-                    />
+                    <FieldError msg={fieldErrors.address} />
                   </Form.Group>
                 </Col>
               </Row>
@@ -625,7 +591,7 @@ const UserProfile = () => {
           <Button
             size="sm"
             className="border-0"
-            style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}
+            style={{ background: 'linear-gradient(135deg, #0f172a, #1e293b)' }}
             onClick={handleEmergencySave}
           >
             Save Changes

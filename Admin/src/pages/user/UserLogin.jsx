@@ -15,7 +15,7 @@ const styles = `
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     height: 100vh; height: 100dvh;
     display: flex; flex-direction: column;
-    background: linear-gradient(160deg, #1e3a8a 0%, #1d4ed8 45%, #2563eb 100%);
+    background: linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #334155 100%);
     overflow: hidden;
   }
 
@@ -47,7 +47,7 @@ const styles = `
   .ul-mob-badge {
     position: absolute; bottom: -5px; right: -5px;
     width: 22px; height: 22px; border-radius: 50%;
-    background: #ef4444; border: 2.5px solid #1d4ed8;
+    background: #14b8a6; border: 2.5px solid #0f172a;
     display: flex; align-items: center; justify-content: center;
   }
   .ul-mob-brand {
@@ -56,7 +56,7 @@ const styles = `
   }
   .ul-mob-brand span {
     display: block; font-size: 10px; font-weight: 500;
-    color: rgba(147,197,253,0.85); letter-spacing: 0.04em; margin-top: 2px;
+    color: rgba(94,234,212,0.85); letter-spacing: 0.04em; margin-top: 2px;
   }
 
   @media (min-width: 781px) { .ul-mob-header { display: none; } }
@@ -103,7 +103,7 @@ const styles = `
     flex-direction: column;
     justify-content: space-between;
     padding: 52px;
-    background: linear-gradient(150deg, #1e3a8a 0%, #1d4ed8 40%, #2563eb 100%);
+    background: linear-gradient(150deg, #0f172a 0%, #1e293b 40%, #334155 100%);
     position: relative;
     overflow: hidden;
     flex-shrink: 0;
@@ -137,7 +137,7 @@ const styles = `
   .ul-left-brand { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: -0.03em; }
   .ul-left-brand span {
     display: block; font-size: 12px; font-weight: 500;
-    color: rgba(147,197,253,0.85); letter-spacing: 0.04em; margin-top: 1px;
+    color: rgba(94,234,212,0.85); letter-spacing: 0.04em; margin-top: 1px;
   }
 
   .ul-left-hero { position: relative; z-index: 1; }
@@ -145,8 +145,8 @@ const styles = `
     font-size: 36px; font-weight: 800; color: #fff;
     line-height: 1.15; letter-spacing: -0.04em; margin-bottom: 16px;
   }
-  .ul-left-hero h1 em { font-style: normal; color: #93c5fd; }
-  .ul-left-hero p { font-size: 15px; color: rgba(147,197,253,0.8); line-height: 1.65; }
+  .ul-left-hero h1 em { font-style: normal; color: #5eead4; }
+  .ul-left-hero p { font-size: 15px; color: rgba(94,234,212,0.8); line-height: 1.65; }
 
   .ul-features { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 12px; }
   .ul-feature-item {
@@ -209,8 +209,8 @@ const styles = `
     transition: border-color 0.18s, box-shadow 0.18s;
   }
   .ul-input-group:focus-within {
-    border-color: #1d4ed8;
-    box-shadow: 0 0 0 3px rgba(29,78,216,0.1);
+    border-color: #0d9488;
+    box-shadow: 0 0 0 3px rgba(13,148,136,0.12);
   }
   .ul-input-prefix {
     display: flex; align-items: center; justify-content: center;
@@ -236,11 +236,11 @@ const styles = `
     border: none; background: transparent;
     color: #9ca3af; transition: color 0.18s; flex-shrink: 0;
   }
-  .ul-input-suffix:hover { color: #1d4ed8; }
+  .ul-input-suffix:hover { color: #0d9488; }
 
   .ul-forgot {
     display: block; text-align: right;
-    font-size: 13px; font-weight: 600; color: #1d4ed8;
+    font-size: 13px; font-weight: 600; color: #0d9488;
     text-decoration: none; margin-top: 8px;
     transition: color 0.15s;
   }
@@ -266,8 +266,8 @@ const styles = `
     border: none; border-radius: 12px; cursor: pointer;
     font-family: inherit; font-size: 16px; font-weight: 700;
     color: #fff; letter-spacing: 0.01em;
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-    box-shadow: 0 4px 16px rgba(29,78,216,0.32);
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    box-shadow: 0 4px 16px rgba(15,23,42,0.45);
     display: flex; align-items: center; justify-content: center; gap: 8px;
     transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
     -webkit-tap-highlight-color: transparent;
@@ -275,7 +275,7 @@ const styles = `
   }
   .ul-btn:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: 0 8px 24px rgba(29,78,216,0.42);
+    box-shadow: 0 8px 24px rgba(15,23,42,0.55);
   }
   .ul-btn:active:not(:disabled) { transform: translateY(0); }
   .ul-btn:disabled { opacity: 0.65; cursor: not-allowed; }
@@ -294,8 +294,8 @@ const styles = `
   ═══════════════════════════════════════ */
   .ul-footer { margin-top: 24px; text-align: center; }
   .ul-footer p { font-size: 14px; color: #94a3b8; }
-  .ul-footer a { color: #1d4ed8; font-weight: 700; text-decoration: none; }
-  .ul-footer a:hover { color: #1e3a8a; }
+  .ul-footer a { color: #0d9488; font-weight: 700; text-decoration: none; }
+  .ul-footer a:hover { color: #0f766e; }
   .ul-admin-link {
     margin-top: 14px; padding-top: 14px;
     border-top: 1px solid #f1f5f9;
@@ -457,9 +457,9 @@ const UserLogin = () => {
             <div className="ul-mob-card-logo">
               <div style={{
                 width: 40, height: 40, borderRadius: 11,
-                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 4px 12px rgba(29,78,216,0.3)',
+                boxShadow: '0 4px 12px rgba(15,23,42,0.4)',
               }}>
                 <HeartPulse size={20} color="#fff" strokeWidth={2} />
               </div>
@@ -488,7 +488,7 @@ const UserLogin = () => {
                 <label className="ul-label">Username</label>
                 <div className="ul-input-group">
                   <div className="ul-input-prefix">
-                    <User size={16} color="#1d4ed8" />
+                    <User size={16} color="#0d9488" />
                   </div>
                   <input
                     className="ul-input-field"
@@ -525,7 +525,6 @@ const UserLogin = () => {
                     {showPwd ? <EyeOff size={17} /> : <Eye size={17} />}
                   </button>
                 </div>
-                <a href="#" className="ul-forgot">Forgot password?</a>
               </div>
 
               <button type="submit" className="ul-btn" disabled={submitting}>
@@ -546,11 +545,8 @@ const UserLogin = () => {
             <div className="ul-footer">
               <p>
                 Don't have an account?{' '}
-                <Link to="/register">Create account</Link>
+                <Link to="/user/register">Create account</Link>
               </p>
-              <div className="ul-admin-link">
-                <a href="/admin/login">Staff / Admin Portal →</a>
-              </div>
             </div>
           </div>
         </div>

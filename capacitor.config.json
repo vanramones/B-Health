@@ -1,5 +1,5 @@
 {
   "appId": "com.van.brgyhealthcenter",
   "appName": "B-Health",
-  "webDir": "frontend/dist"
+  "webDir": "Admin/dist"
 }

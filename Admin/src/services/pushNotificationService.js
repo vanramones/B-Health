@@ -52,6 +52,7 @@ class PushNotificationService {
       }
 
       await this.ensureChannel();
+      await this.cancelLegacyVaccineReminders();
       this.attachListeners();
 
       // Triggers the 'registration' listener with the FCM token
@@ -83,9 +84,30 @@ class PushNotificationService {
     }
   }
 
+  /**
+   * Cancel vaccination reminders scheduled on the device by older app versions,
+   * so they stop firing now that the feature has been removed.
+   */
+  async cancelLegacyVaccineReminders() {
+    try {
+      const { notifications = [] } = await LocalNotifications.getPending();
+      const legacy = notifications.filter((n) => n?.extra?.route === '/user/vaccinations' || n?.extra?.vaccination_id != null);
+      if (legacy.length) await LocalNotifications.cancel({ notifications: legacy.map((n) => ({ id: n.id })) });
+    } catch (e) {
+      console.warn('[Push] cancel legacy reminders failed:', e?.message || e);
+    }
+  }
+
   attachListeners() {
     if (this._listenersAttached) return;
     this._listenersAttached = true;
+
+    // Tap on a foreground-mirrored LOCAL banner — navigate to its route
+    LocalNotifications.removeAllListeners()
+      .then(() => LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+        navigateFromNotification(action?.notification?.extra?.route || '/user');
+      }))
+      .catch((e) => console.warn('[Push] local tap listener failed:', e?.message || e));
 
     // Fired once we receive an FCM token — save it to Supabase
     PushNotifications.addListener('registration', async (token) => {
@@ -103,7 +125,7 @@ class PushNotificationService {
     PushNotifications.addListener('pushNotificationReceived', async (notification) => {
       console.log('[Push] received in foreground:', notification?.title);
       try {
-        const route = notification?.data?.route || '/user/vaccinations';
+        const route = notification?.data?.route || '/user';
         await LocalNotifications.schedule({
           notifications: [
             {
@@ -122,11 +144,8 @@ class PushNotificationService {
     });
 
     // User TAPPED the notification — navigate to the relevant page.
-    // (Taps on the foreground-mirrored LOCAL banner are handled by
-    // vaccinationReminderService's single localNotificationActionPerformed
-    // listener, which reads the same `extra.route`.)
     PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-      const route = action?.notification?.data?.route || '/user/vaccinations';
+      const route = action?.notification?.data?.route || '/user';
       navigateFromNotification(route);
     });
   }

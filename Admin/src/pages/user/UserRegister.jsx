@@ -22,7 +22,7 @@ const styles = `
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     height: 100vh; height: 100dvh;
     display: flex; flex-direction: column;
-    background: linear-gradient(160deg, #1e3a8a 0%, #1d4ed8 45%, #2563eb 100%);
+    background: linear-gradient(160deg, #0f172a 0%, #1e293b 45%, #334155 100%);
     overflow: hidden;
   }
 
@@ -49,7 +49,7 @@ const styles = `
   .ur-mob-badge {
     position: absolute; bottom: -5px; right: -5px;
     width: 20px; height: 20px; border-radius: 50%;
-    background: #ef4444; border: 2.5px solid #1d4ed8;
+    background: #14b8a6; border: 2.5px solid #0f172a;
     display: flex; align-items: center; justify-content: center;
   }
   .ur-mob-brand {
@@ -58,7 +58,7 @@ const styles = `
   }
   .ur-mob-brand span {
     display: block; font-size: 10px; font-weight: 500;
-    color: rgba(147,197,253,0.85); letter-spacing: 0.04em; margin-top: 2px;
+    color: rgba(94,234,212,0.85); letter-spacing: 0.04em; margin-top: 2px;
   }
   @media (min-width: 600px) { .ur-mob-header { display: none; } }
 
@@ -114,7 +114,7 @@ const styles = `
     display: none; width: 45%;
     flex-direction: column; justify-content: center; gap: 32px;
     padding: 52px; position: relative; overflow: hidden; flex-shrink: 0;
-    background: linear-gradient(150deg, #1e3a8a 0%, #1d4ed8 40%, #2563eb 100%);
+    background: linear-gradient(150deg, #0f172a 0%, #1e293b 40%, #334155 100%);
   }
   @media (min-width: 900px) { .ur-left { display: flex; } }
   .ur-left::before {
@@ -139,15 +139,15 @@ const styles = `
   .ur-left-brand { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: -0.03em; }
   .ur-left-brand span {
     display: block; font-size: 12px; font-weight: 500;
-    color: rgba(147,197,253,0.85); letter-spacing: 0.04em; margin-top: 1px;
+    color: rgba(94,234,212,0.85); letter-spacing: 0.04em; margin-top: 1px;
   }
   .ur-left-hero { position: relative; z-index: 1; }
   .ur-left-hero h1 {
     font-size: 34px; font-weight: 800; color: #fff;
     line-height: 1.15; letter-spacing: -0.04em; margin-bottom: 14px;
   }
-  .ur-left-hero h1 em { font-style: normal; color: #93c5fd; }
-  .ur-left-hero p { font-size: 15px; color: rgba(147,197,253,0.8); line-height: 1.65; }
+  .ur-left-hero h1 em { font-style: normal; color: #5eead4; }
+  .ur-left-hero p { font-size: 15px; color: rgba(94,234,212,0.8); line-height: 1.65; }
   .ur-steps { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 12px; }
   .ur-step {
     display: flex; align-items: center; gap: 14px;
@@ -162,7 +162,7 @@ const styles = `
     font-size: 12px; font-weight: 800; color: #fff;
   }
   .ur-step-text strong { display: block; font-size: 13px; font-weight: 700; color: #fff; }
-  .ur-step-text span { font-size: 12px; color: rgba(147,197,253,0.75); }
+  .ur-step-text span { font-size: 12px; color: rgba(94,234,212,0.75); }
 
   /* ── Tablet logo ── */
   .ur-tab-logo { display: none; }
@@ -183,11 +183,11 @@ const styles = `
 
   .ur-back {
     display: inline-flex; align-items: center; gap: 4px;
-    font-size: 13px; font-weight: 600; color: #1d4ed8;
+    font-size: 13px; font-weight: 600; color: #0d9488;
     text-decoration: none; margin-bottom: 18px;
     transition: color 0.15s; -webkit-tap-highlight-color: transparent;
   }
-  .ur-back:hover { color: #1e3a8a; }
+  .ur-back:hover { color: #0f766e; }
 
   .ur-divider { height: 1px; background: #e2e8f0; margin-bottom: 22px; }
 
@@ -212,19 +212,19 @@ const styles = `
     min-width: 0; width: 100%;
   }
   .ur-input-group:focus-within {
-    border-color: #1d4ed8; box-shadow: 0 0 0 3px rgba(29,78,216,0.1);
+    border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.12);
   }
   .ur-input-group.error { border-color: #ef4444; }
-  .ur-input-group.error:focus-within { box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
+  .ur-input-group.error:focus-within { box-shadow: 0 0 0 3px rgba(239,68,68,0.12); }
   .ur-input-prefix {
     display: flex; align-items: center; justify-content: center;
     padding: 0 12px; background: #f8fafc;
     border-right: 1.5px solid #e2e8f0; flex-shrink: 0;
     transition: background 0.18s;
   }
-  .ur-input-group:focus-within .ur-input-prefix { background: #eff6ff; }
+  .ur-input-group:focus-within .ur-input-prefix { background: #f0fdfa; }
   .ur-input-prefix-text {
-    font-size: 13px; font-weight: 700; color: #1d4ed8;
+    font-size: 13px; font-weight: 700; color: #0f766e;
     letter-spacing: 0.02em; white-space: nowrap;
   }
   .ur-input-field {
@@ -238,7 +238,7 @@ const styles = `
     cursor: pointer; border: none; background: transparent;
     color: #9ca3af; transition: color 0.18s; flex-shrink: 0;
   }
-  .ur-input-suffix:hover { color: #1d4ed8; }
+  .ur-input-suffix:hover { color: #0d9488; }
 
   select.ur-input-field {
     cursor: pointer; -webkit-appearance: none; appearance: none;
@@ -259,7 +259,7 @@ const styles = `
   .ur-strength-bar {
     height: 4px; border-radius: 4px; background: #e2e8f0; margin-bottom: 5px; overflow: hidden;
   }
-  .ur-strength-fill { height: 100%; border-radius: 4px; transition: width 0.3s, background-color 0.3s; }
+  .ur-strength-fill { height: 100%; border-radius: 4px; transition: width 0.3s ease, background-color 0.3s ease; }
   .ur-strength-label { font-size: 11px; font-weight: 600; }
 
   /* ── Submit Button ── */
@@ -268,14 +268,14 @@ const styles = `
     border: none; border-radius: 12px; cursor: pointer;
     font-family: inherit; font-size: 16px; font-weight: 700;
     color: #fff; letter-spacing: 0.01em;
-    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
-    box-shadow: 0 4px 16px rgba(29,78,216,0.32);
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    box-shadow: 0 4px 16px rgba(15,23,42,0.45);
     display: flex; align-items: center; justify-content: center; gap: 8px;
     transition: transform 0.15s, box-shadow 0.15s;
     -webkit-tap-highlight-color: transparent; touch-action: manipulation;
   }
   .ur-btn:hover:not(:disabled) {
-    transform: translateY(-1px); box-shadow: 0 8px 24px rgba(29,78,216,0.42);
+    transform: translateY(-1px); box-shadow: 0 8px 24px rgba(15,23,42,0.55);
   }
   .ur-btn:active:not(:disabled) { transform: translateY(0); }
   .ur-btn:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -303,9 +303,9 @@ const styles = `
   }
   .ur-success-icon {
     width: 64px; height: 64px; border-radius: 50%;
-    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    background: linear-gradient(135deg, #0f172a, #1e293b);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 8px 24px rgba(29,78,216,0.35);
+    box-shadow: 0 8px 24px rgba(15,23,42,0.45);
     margin-bottom: 18px;
   }
   .ur-success h3 {
@@ -317,8 +317,8 @@ const styles = `
   /* ── Footer ── */
   .ur-footer { margin-top: 20px; text-align: center; }
   .ur-footer p { font-size: 14px; color: #94a3b8; }
-  .ur-footer a { color: #1d4ed8; font-weight: 700; text-decoration: none; }
-  .ur-footer a:hover { color: #1e3a8a; }
+  .ur-footer a { color: #0d9488; font-weight: 700; text-decoration: none; }
+  .ur-footer a:hover { color: #0f766e; }
 
   /* ── Toast Notification ── */
   .ur-toast {
@@ -368,8 +368,8 @@ const strengthMeta = [
   null,
   { label: 'Weak',      color: '#ef4444', width: '25%' },
   { label: 'Fair',      color: '#f59e0b', width: '50%' },
-  { label: 'Good',      color: '#3b82f6', width: '75%' },
-  { label: 'Strong',    color: '#1d4ed8', width: '100%' },
+  { label: 'Good',      color: '#0d9488', width: '75%' },
+  { label: 'Strong',    color: '#0f766e', width: '100%' },
 ];
 
 const UserRegister = () => {
@@ -445,7 +445,7 @@ const UserRegister = () => {
     setSubmitting(false);
     if (result.ok) {
       setToast({ type: 'success', message: `Welcome, ${form.fullName}! Your account has been created successfully.` });
-      setTimeout(() => navigate('/login', { replace: true, state: { registrationSuccess: true, userName: form.fullName } }), 500);
+      setTimeout(() => navigate('/user/login', { replace: true, state: { registrationSuccess: true, userName: form.fullName } }), 500);
     } else {
       setGlobalError(result.error || 'Registration failed. Please try again.');
     }
@@ -529,7 +529,7 @@ const UserRegister = () => {
             <div className="ur-tab-logo">
               <div style={{
                 width: 38, height: 38, borderRadius: 10,
-                background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                background: 'linear-gradient(135deg, #0f172a, #1e293b)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 boxShadow: '0 4px 12px rgba(29,78,216,0.3)',
               }}>
@@ -542,7 +542,7 @@ const UserRegister = () => {
             </div>
 
             <>
-              <Link to="/login" className="ur-back">
+              <Link to="/user/login" className="ur-back">
                 <ChevronLeft size={15} /> Back to Sign In
               </Link>
 
@@ -567,7 +567,7 @@ const UserRegister = () => {
                     <label className="ur-label">Username</label>
                     <div className={`ur-input-group${errors.username ? ' error' : ''}`}>
                       <div className="ur-input-prefix">
-                        <User size={15} color={errors.username ? '#ef4444' : '#1d4ed8'} />
+                        <User size={15} color={errors.username ? '#ef4444' : '#0d9488'} />
                       </div>
                       <input
                         className="ur-input-field"
@@ -759,7 +759,7 @@ const UserRegister = () => {
                 <div className="ur-footer">
                   <p>
                     Already have an account?{' '}
-                    <Link to="/login">Sign in</Link>
+                    <Link to="/user/login">Sign in</Link>
                   </p>
                 </div>
               </>

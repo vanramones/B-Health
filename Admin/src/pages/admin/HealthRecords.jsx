@@ -1,12 +1,21 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import useCrud from '../../hooks/useCrud';
 import api from '../../utils/api';
 import { supabase } from '../../config/supabase';
 import { Card, Row, Col, Form, InputGroup, Button, Table, Modal } from 'react-bootstrap';
 import {
   Search, Plus, Eye, Edit3, Trash2, FileText, Activity, Stethoscope, Pill, ClipboardList,
-  Calendar, User, Clock, ChevronDown,
+  Calendar, User, Clock, ChevronDown, Printer, FileDown,
 } from 'lucide-react';
+import { downloadHealthRecordPdf, printHealthRecordPdf } from '../../utils/healthRecordPdf';
+import { healthRecordCode } from '../../utils/recordCodes';
+
+const CodeTag = ({ children }) => (
+  <span style={{ fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace', fontSize: 11, fontWeight: 700, color: '#047857', background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 6, padding: '1px 6px', whiteSpace: 'nowrap' }}>
+    {children}
+  </span>
+);
 
 const statusVariant = {
   ongoing:     { bg: '#fecaca', color: '#7f1d1d', border: '#ef4444', label: 'Ongoing'   },
@@ -77,6 +86,26 @@ const HealthRecords = () => {
     return () => supabase.removeChannel(channel);
   }, [handleRealtime]);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const patientParam = searchParams.get('patient');
+  const recordParam = searchParams.get('record');
+
+  useEffect(() => {
+    if ((!patientParam && !recordParam) || loading) return;
+    if (recordParam) {
+      const rec = items.find((r) => String(r.id) === String(recordParam));
+      if (rec) { setQuery(rec.patient || ''); setShowView(rec); }
+    } else {
+      const target = patientParam.trim().toLowerCase();
+      setQuery(patientParam);
+      const latest = items
+        .filter((r) => (r.patient || '').trim().toLowerCase() === target)
+        .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+      if (latest) setShowView(latest);
+    }
+    setSearchParams({}, { replace: true });
+  }, [patientParam, recordParam, loading, items, setSearchParams]);
+
   const filteredUsers = users.filter((u) => u.full_name.toLowerCase().includes(userSearch.toLowerCase()));
 
   const counts = useMemo(() => ({
@@ -90,7 +119,7 @@ const HealthRecords = () => {
     const q = query.trim().toLowerCase();
     return items.filter((r) => {
       const matchStatus = filter === 'all' || r.status === filter;
-      const matchQuery  = !q || r.patient.toLowerCase().includes(q) || r.diagnosis.toLowerCase().includes(q) || r.doctor.toLowerCase().includes(q) || r.type.toLowerCase().includes(q);
+      const matchQuery  = !q || healthRecordCode(r).toLowerCase().includes(q) || r.patient.toLowerCase().includes(q) || r.diagnosis.toLowerCase().includes(q) || r.doctor.toLowerCase().includes(q) || r.type.toLowerCase().includes(q);
       return matchStatus && matchQuery;
     });
   }, [items, filter, query]);
@@ -168,7 +197,7 @@ const HealthRecords = () => {
             <div className="ms-auto d-flex align-items-center gap-2">
               <InputGroup size="sm" style={{ width: 280 }}>
                 <InputGroup.Text className="bg-light border-end-0"><Search size={14} color="#9ca3af" /></InputGroup.Text>
-                <Form.Control className="bg-light border-start-0" placeholder="Search patient, diagnosis, doctor..." value={query} onChange={(e) => setQuery(e.target.value)} style={{ fontSize: 13 }} />
+                <Form.Control className="bg-light border-start-0" placeholder="Search record no., patient, diagnosis, doctor..." value={query} onChange={(e) => setQuery(e.target.value)} style={{ fontSize: 13 }} />
               </InputGroup>
               <Button size="sm" onClick={openAdd} className="d-flex align-items-center gap-1 border-0" style={{ backgroundColor: '#16a34a', fontWeight: 500, fontSize: 12 }}>
                 <Plus size={14} /> Add Record
@@ -185,16 +214,17 @@ const HealthRecords = () => {
             <Table hover className="mb-0 align-middle">
               <thead style={{ backgroundColor: '#f9fafb' }}>
                 <tr style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  <th className="px-4 py-3">Patient</th><th className="py-3">Type</th><th className="py-3">Diagnosis</th>
+                  <th className="px-4 py-3">Record No.</th><th className="py-3">Patient</th><th className="py-3">Type</th><th className="py-3">Diagnosis</th>
                   <th className="py-3">Doctor</th><th className="py-3">Date</th><th className="py-3">Status</th>
                   <th className="py-3 text-end pe-4">Actions</th>
                 </tr>
               </thead>
               <tbody style={{ fontSize: 13 }}>
-                {filtered.length === 0 && <tr><td colSpan={7} className="text-center py-5" style={{ color: '#9ca3af' }}>No health records found.</td></tr>}
+                {filtered.length === 0 && <tr><td colSpan={8} className="text-center py-5" style={{ color: '#9ca3af' }}>No health records found.</td></tr>}
                 {filtered.map((r) => (
                   <tr key={r.id} onClick={() => setShowView(r)} style={{ cursor: 'pointer' }}>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3"><CodeTag>{healthRecordCode(r)}</CodeTag></td>
+                    <td className="py-3">
                       <div className="d-flex align-items-center gap-2">
                         <div className="d-flex align-items-center justify-content-center rounded-circle text-white fw-bold" style={{ width: 32, height: 32, backgroundColor: '#16a34a', fontSize: 11 }}>
                           {r.patient.split(' ').map((p) => p[0]).slice(0, 2).join('')}
@@ -243,7 +273,7 @@ const HealthRecords = () => {
                             <span className="fw-bold text-truncate" style={{ fontSize: 14, color: '#111827' }}>{r.patient}</span>
                             <StatusPill status={r.status} />
                           </div>
-                          <div className="d-flex flex-wrap align-items-center gap-2 mb-2"><TypePill type={r.type} /></div>
+                          <div className="d-flex flex-wrap align-items-center gap-2 mb-2"><CodeTag>{healthRecordCode(r)}</CodeTag><TypePill type={r.type} /></div>
                           <div style={{ fontSize: 13, color: '#374151', fontWeight: 500, marginBottom: 4 }}>{r.diagnosis}</div>
                           <div className="d-flex flex-wrap gap-3" style={{ fontSize: 12, color: '#6b7280' }}>
                             <span className="d-flex align-items-center gap-1"><User size={12} /> {r.doctor || '—'}</span>
@@ -367,8 +397,8 @@ const HealthRecords = () => {
                   </div>
                 </div>
                 <div className="text-end flex-shrink-0">
-                  <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Record ID</div>
-                  <div className="fw-bold" style={{ fontSize: 13, color: '#475569' }}>#{showView.id}</div>
+                  <div style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase' }}>Record No.</div>
+                  <div className="fw-bold" style={{ fontSize: 13, color: '#047857', fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }}>{healthRecordCode(showView)}</div>
                 </div>
               </div>
             </div>
@@ -485,7 +515,15 @@ const HealthRecords = () => {
               <Trash2 size={14} /> Delete
             </Button>
           </div>
-          <Button size="sm" variant="secondary" onClick={() => setShowView(null)}>Close</Button>
+          <div className="d-flex gap-2">
+            <Button size="sm" variant="light" className="d-flex align-items-center gap-1 border" onClick={() => printHealthRecordPdf(showView)}>
+              <Printer size={14} /> Print
+            </Button>
+            <Button size="sm" variant="danger" className="d-flex align-items-center gap-1" onClick={() => downloadHealthRecordPdf(showView)}>
+              <FileDown size={14} /> PDF
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setShowView(null)}>Close</Button>
+          </div>
         </Modal.Footer>
       </Modal>
 

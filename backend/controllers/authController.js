@@ -14,8 +14,13 @@ exports.login = async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Username and password are required.' });
 
-    const [rows] = await db.query('SELECT * FROM admins WHERE username = ?', [username.trim().toLowerCase()]);
-    if (rows.length === 0) return res.status(401).json({ error: 'Invalid username or password.' });
+    const { data: rows, error } = await db
+      .from('admins')
+      .select('*')
+      .eq('username', username.trim().toLowerCase())
+      .limit(1);
+    if (error) throw error;
+    if (!rows || rows.length === 0) return res.status(401).json({ error: 'Invalid username or password.' });
 
     const admin = rows[0];
     const valid = await bcrypt.compare(password, admin.password);
@@ -44,8 +49,13 @@ exports.login = async (req, res) => {
 // GET /api/auth/me
 exports.me = async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id,username,name,email,role,is_owner FROM admins WHERE id = ?', [req.user.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Admin not found.' });
+    const { data: rows, error } = await db
+      .from('admins')
+      .select('id,username,name,email,role,is_owner')
+      .eq('id', req.user.id)
+      .limit(1);
+    if (error) throw error;
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Admin not found.' });
     const a = rows[0];
     res.json({ id: a.id, username: a.username, name: a.name, email: a.email, role: a.role, initials: initialsOf(a.name), owner: !!a.is_owner });
   } catch (err) {
@@ -56,7 +66,11 @@ exports.me = async (req, res) => {
 // GET /api/auth/admins
 exports.getAdmins = async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT id,username,name,email,role,is_active,is_owner,created_at FROM admins ORDER BY created_at DESC');
+    const { data: rows, error } = await db
+      .from('admins')
+      .select('id,username,name,email,role,is_active,is_owner,created_at')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -69,15 +83,28 @@ exports.createAdmin = async (req, res) => {
     const { username, password, name, email, role, active } = req.body;
     if (!username || !password || !name) return res.status(400).json({ error: 'Username, password, and name are required.' });
 
-    const [existing] = await db.query('SELECT id FROM admins WHERE username = ?', [username.trim().toLowerCase()]);
-    if (existing.length > 0) return res.status(409).json({ error: 'Username already exists.' });
+    const { data: existing } = await db
+      .from('admins')
+      .select('id')
+      .eq('username', username.trim().toLowerCase())
+      .limit(1);
+    if (existing && existing.length > 0) return res.status(409).json({ error: 'Username already exists.' });
 
     const hashed = await bcrypt.hash(password, 10);
-    const [result] = await db.query(
-      'INSERT INTO admins (username, password, name, email, role, is_active) VALUES (?,?,?,?,?,?)',
-      [username.trim().toLowerCase(), hashed, name.trim(), (email || '').trim(), role || 'Staff', active !== false ? 1 : 0]
-    );
-    res.status(201).json({ ok: true, id: result.insertId });
+    const { data, error } = await db
+      .from('admins')
+      .insert({
+        username: username.trim().toLowerCase(),
+        password: hashed,
+        name: name.trim(),
+        email: (email || '').trim(),
+        role: role || 'Staff',
+        is_active: active !== false,
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    res.status(201).json({ ok: true, id: data.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -89,14 +116,24 @@ exports.updateAdmin = async (req, res) => {
     const { id } = req.params;
     const { username, password, name, email, role, active } = req.body;
 
-    const [rows] = await db.query('SELECT * FROM admins WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Admin not found.' });
+    const { data: rows, error: fetchError } = await db
+      .from('admins')
+      .select('*')
+      .eq('id', id)
+      .limit(1);
+    if (fetchError) throw fetchError;
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Admin not found.' });
     const admin = rows[0];
 
     const newUsername = (username ?? admin.username).trim().toLowerCase();
     if (newUsername !== admin.username.toLowerCase()) {
-      const [dup] = await db.query('SELECT id FROM admins WHERE username = ? AND id != ?', [newUsername, id]);
-      if (dup.length > 0) return res.status(409).json({ error: 'Username already taken.' });
+      const { data: dup } = await db
+        .from('admins')
+        .select('id')
+        .eq('username', newUsername)
+        .neq('id', id)
+        .limit(1);
+      if (dup && dup.length > 0) return res.status(409).json({ error: 'Username already taken.' });
     }
 
     const fields = {
@@ -104,14 +141,13 @@ exports.updateAdmin = async (req, res) => {
       name: (name ?? admin.name).trim(),
       email: (email ?? admin.email).trim(),
       role: admin.is_owner ? admin.role : (role ?? admin.role),
-      is_active: admin.is_owner ? 1 : (active !== undefined ? (active ? 1 : 0) : admin.is_active),
+      is_active: admin.is_owner ? true : (active !== undefined ? !!active : admin.is_active),
     };
 
     if (password) fields.password = await bcrypt.hash(password, 10);
 
-    const sets = Object.entries(fields).map(([k]) => `${k} = ?`).join(', ');
-    const vals = Object.values(fields);
-    await db.query(`UPDATE admins SET ${sets} WHERE id = ?`, [...vals, id]);
+    const { error } = await db.from('admins').update(fields).eq('id', id);
+    if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -122,12 +158,13 @@ exports.updateAdmin = async (req, res) => {
 exports.deleteAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows] = await db.query('SELECT * FROM admins WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Admin not found.' });
+    const { data: rows } = await db.from('admins').select('*').eq('id', id).limit(1);
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Admin not found.' });
     if (rows[0].is_owner) return res.status(403).json({ error: 'Owner account cannot be deleted.' });
     if (parseInt(id) === req.user.id) return res.status(403).json({ error: 'Cannot delete your own account.' });
 
-    await db.query('DELETE FROM admins WHERE id = ?', [id]);
+    const { error } = await db.from('admins').delete().eq('id', id);
+    if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -138,12 +175,16 @@ exports.deleteAdmin = async (req, res) => {
 exports.toggleAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows] = await db.query('SELECT * FROM admins WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Admin not found.' });
+    const { data: rows } = await db.from('admins').select('*').eq('id', id).limit(1);
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'Admin not found.' });
     if (rows[0].is_owner) return res.status(403).json({ error: 'Owner account is always active.' });
     if (parseInt(id) === req.user.id) return res.status(403).json({ error: 'Cannot deactivate your own account.' });
 
-    await db.query('UPDATE admins SET is_active = !is_active WHERE id = ?', [id]);
+    const { error } = await db
+      .from('admins')
+      .update({ is_active: !rows[0].is_active })
+      .eq('id', id);
+    if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -164,27 +205,34 @@ exports.userRegister = async (req, res) => {
     if (!username || !password || !full_name)
       return res.status(400).json({ error: 'Username, password, and full name are required.' });
 
-    const [existing] = await db.query('SELECT id FROM users WHERE username = ?', [username.trim().toLowerCase()]);
-    if (existing.length > 0) return res.status(409).json({ error: 'Username already taken.' });
+    const { data: existing } = await db
+      .from('users')
+      .select('id')
+      .eq('username', username.trim().toLowerCase())
+      .limit(1);
+    if (existing && existing.length > 0) return res.status(409).json({ error: 'Username already taken.' });
 
     const hashed = await bcrypt.hash(password, 10);
-    const [result] = await db.query(
-      'INSERT INTO users (username, password, full_name, phone, purok) VALUES (?,?,?,?,?)',
-      [username.trim().toLowerCase(), hashed, full_name.trim(), (phone || '').trim(), (purok || '').trim()]
-    );
+    const { data, error } = await db
+      .from('users')
+      .insert({
+        username: username.trim().toLowerCase(),
+        password: hashed,
+        full_name: full_name.trim(),
+        phone: (phone || '').trim(),
+        purok: (purok || '').trim(),
+      })
+      .select('id,username,full_name,phone,purok')
+      .single();
+    if (error) throw error;
 
-    const token = signUser({ id: result.insertId, username: username.trim().toLowerCase(), type: 'user' });
-    const newUser = { id: result.insertId, username: username.trim().toLowerCase(), full_name: full_name.trim(), phone, purok };
-    
+    const token = signUser({ id: data.id, username: data.username, type: 'user' });
+
     if (global.io) {
-      global.io.emit('user-created', newUser);
+      global.io.emit('user-created', data);
     }
 
-    res.status(201).json({
-      ok: true,
-      token,
-      user: newUser,
-    });
+    res.status(201).json({ ok: true, token, user: data });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -196,8 +244,13 @@ exports.userLogin = async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Username and password are required.' });
 
-    const [rows] = await db.query('SELECT * FROM users WHERE username = ?', [username.trim().toLowerCase()]);
-    if (rows.length === 0) return res.status(401).json({ error: 'Invalid username or password.' });
+    const { data: rows, error } = await db
+      .from('users')
+      .select('*')
+      .eq('username', username.trim().toLowerCase())
+      .limit(1);
+    if (error) throw error;
+    if (!rows || rows.length === 0) return res.status(401).json({ error: 'Invalid username or password.' });
 
     const u = rows[0];
     const valid = await bcrypt.compare(password, u.password);
@@ -215,14 +268,16 @@ exports.userLogin = async (req, res) => {
   }
 };
 
-// GET /api/auth/user/me  (requires userAuth middleware)
+// GET /api/auth/user/me
 exports.userMe = async (req, res) => {
   try {
-    const [rows] = await db.query(
-      'SELECT id, username, full_name, phone, purok, created_at FROM users WHERE id = ?',
-      [req.user.id]
-    );
-    if (rows.length === 0) return res.status(404).json({ error: 'User not found.' });
+    const { data: rows, error } = await db
+      .from('users')
+      .select('id,username,full_name,phone,purok,created_at')
+      .eq('id', req.user.id)
+      .limit(1);
+    if (error) throw error;
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'User not found.' });
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -236,15 +291,27 @@ exports.createUser = async (req, res) => {
     if (!username || !password || !full_name)
       return res.status(400).json({ error: 'Username, password, and full name are required.' });
 
-    const [existing] = await db.query('SELECT id FROM users WHERE username = ?', [username.trim().toLowerCase()]);
-    if (existing.length > 0) return res.status(409).json({ error: 'Username already taken.' });
+    const { data: existing } = await db
+      .from('users')
+      .select('id')
+      .eq('username', username.trim().toLowerCase())
+      .limit(1);
+    if (existing && existing.length > 0) return res.status(409).json({ error: 'Username already taken.' });
 
     const hashed = await bcrypt.hash(password, 10);
-    const [result] = await db.query(
-      'INSERT INTO users (username, password, full_name, phone, purok) VALUES (?,?,?,?,?)',
-      [username.trim().toLowerCase(), hashed, full_name.trim(), (phone || '').trim(), (purok || '').trim()]
-    );
-    res.status(201).json({ ok: true, id: result.insertId });
+    const { data, error } = await db
+      .from('users')
+      .insert({
+        username: username.trim().toLowerCase(),
+        password: hashed,
+        full_name: full_name.trim(),
+        phone: (phone || '').trim(),
+        purok: (purok || '').trim(),
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    res.status(201).json({ ok: true, id: data.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -256,26 +323,31 @@ exports.updateUser = async (req, res) => {
     const { id } = req.params;
     const { username, password, full_name, phone, purok } = req.body;
 
-    const [rows] = await db.query('SELECT * FROM users WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'User not found.' });
+    const { data: rows } = await db.from('users').select('*').eq('id', id).limit(1);
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'User not found.' });
     const u = rows[0];
 
     const newUsername = (username ?? u.username).trim().toLowerCase();
     if (newUsername !== u.username.toLowerCase()) {
-      const [dup] = await db.query('SELECT id FROM users WHERE username = ? AND id != ?', [newUsername, id]);
-      if (dup.length > 0) return res.status(409).json({ error: 'Username already taken.' });
+      const { data: dup } = await db
+        .from('users')
+        .select('id')
+        .eq('username', newUsername)
+        .neq('id', id)
+        .limit(1);
+      if (dup && dup.length > 0) return res.status(409).json({ error: 'Username already taken.' });
     }
 
     const fields = {
       username:  newUsername,
-      full_name: (full_name  ?? u.full_name).trim(),
-      phone:     (phone      ?? u.phone     ?? '').trim(),
-      purok:     (purok      ?? u.purok     ?? '').trim(),
+      full_name: (full_name ?? u.full_name).trim(),
+      phone:     (phone     ?? u.phone     ?? '').trim(),
+      purok:     (purok     ?? u.purok     ?? '').trim(),
     };
     if (password) fields.password = await bcrypt.hash(password, 10);
 
-    const sets = Object.keys(fields).map((k) => `${k} = ?`).join(', ');
-    await db.query(`UPDATE users SET ${sets} WHERE id = ?`, [...Object.values(fields), id]);
+    const { error } = await db.from('users').update(fields).eq('id', id);
+    if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -285,9 +357,11 @@ exports.updateUser = async (req, res) => {
 // GET /api/auth/users  (admin: list all registered users)
 exports.listUsers = async (req, res) => {
   try {
-    const [rows] = await db.query(
-      'SELECT id, username, full_name, phone, purok, is_active, created_at FROM users ORDER BY created_at DESC'
-    );
+    const { data: rows, error } = await db
+      .from('users')
+      .select('id,username,full_name,phone,purok,is_active,created_at')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -298,9 +372,14 @@ exports.listUsers = async (req, res) => {
 exports.toggleUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const [rows] = await db.query('SELECT id FROM users WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'User not found.' });
-    await db.query('UPDATE users SET is_active = !is_active WHERE id = ?', [id]);
+    const { data: rows } = await db.from('users').select('id,is_active').eq('id', id).limit(1);
+    if (!rows || rows.length === 0) return res.status(404).json({ error: 'User not found.' });
+
+    const { error } = await db
+      .from('users')
+      .update({ is_active: !rows[0].is_active })
+      .eq('id', id);
+    if (error) throw error;
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

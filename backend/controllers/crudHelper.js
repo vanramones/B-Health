@@ -1,5 +1,5 @@
 /**
- * Generic CRUD factory — generates standard getAll, getById, create, update, delete handlers for a given table.
+ * Generic CRUD factory — Supabase version
  */
 const db = require('../config/db');
 
@@ -9,20 +9,23 @@ module.exports = (table, { columns, required = [], searchCols = [] }) => ({
   getAll: async (req, res) => {
     try {
       const { search, status, limit = 100, offset = 0 } = req.query;
-      let sql = `SELECT * FROM \`${table}\` WHERE deleted_at IS NULL`;
-      const params = [];
 
-      if (status) { sql += ` AND status = ?`; params.push(status); }
+      let query = db
+        .from(table)
+        .select('*')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false })
+        .range(parseInt(offset), parseInt(offset) + parseInt(limit) - 1);
+
+      if (status) query = query.eq('status', status);
+
       if (search && searchCols.length) {
-        const like = searchCols.map((c) => `\`${c}\` LIKE ?`).join(' OR ');
-        sql += ` AND (${like})`;
-        searchCols.forEach(() => params.push(`%${search}%`));
+        const orFilter = searchCols.map((c) => `${c}.ilike.%${search}%`).join(',');
+        query = query.or(orFilter);
       }
 
-      sql += ` ORDER BY created_at DESC LIMIT ? OFFSET ?`;
-      params.push(parseInt(limit), parseInt(offset));
-
-      const [rows] = await db.query(sql, params);
+      const { data: rows, error } = await query;
+      if (error) throw error;
       res.json(rows);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -32,19 +35,26 @@ module.exports = (table, { columns, required = [], searchCols = [] }) => ({
   // GET /count
   count: async (req, res) => {
     try {
-      const [rows] = await db.query(`SELECT COUNT(*) as total FROM \`${table}\` WHERE deleted_at IS NULL`);
-      res.json(rows[0]);
+      const { count, error } = await db
+        .from(table)
+        .select('*', { count: 'exact', head: true })
+        .is('deleted_at', null);
+      if (error) throw error;
+      res.json({ total: count });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   },
 
-  // GET /trash  — soft-deleted records
+  // GET /trash — soft-deleted records
   trash: async (req, res) => {
     try {
-      const [rows] = await db.query(
-        `SELECT * FROM \`${table}\` WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC`
-      );
+      const { data: rows, error } = await db
+        .from(table)
+        .select('*')
+        .not('deleted_at', 'is', null)
+        .order('deleted_at', { ascending: false });
+      if (error) throw error;
       res.json(rows);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -54,21 +64,40 @@ module.exports = (table, { columns, required = [], searchCols = [] }) => ({
   // PATCH /trash/:id/restore
   restore: async (req, res) => {
     try {
-      const [exists] = await db.query(`SELECT id FROM \`${table}\` WHERE id = ? AND deleted_at IS NOT NULL`, [req.params.id]);
-      if (exists.length === 0) return res.status(404).json({ error: 'Not found in trash.' });
-      await db.query(`UPDATE \`${table}\` SET deleted_at = NULL WHERE id = ?`, [req.params.id]);
+      const { data: exists, error: fetchError } = await db
+        .from(table)
+        .select('id')
+        .eq('id', req.params.id)
+        .not('deleted_at', 'is', null)
+        .limit(1);
+      if (fetchError) throw fetchError;
+      if (!exists || exists.length === 0) return res.status(404).json({ error: 'Not found in trash.' });
+
+      const { error } = await db
+        .from(table)
+        .update({ deleted_at: null })
+        .eq('id', req.params.id);
+      if (error) throw error;
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   },
 
-  // DELETE /trash/:id/purge  — permanent delete
+  // DELETE /trash/:id/purge — permanent delete
   purge: async (req, res) => {
     try {
-      const [exists] = await db.query(`SELECT id FROM \`${table}\` WHERE id = ? AND deleted_at IS NOT NULL`, [req.params.id]);
-      if (exists.length === 0) return res.status(404).json({ error: 'Not found in trash.' });
-      await db.query(`DELETE FROM \`${table}\` WHERE id = ?`, [req.params.id]);
+      const { data: exists, error: fetchError } = await db
+        .from(table)
+        .select('id')
+        .eq('id', req.params.id)
+        .not('deleted_at', 'is', null)
+        .limit(1);
+      if (fetchError) throw fetchError;
+      if (!exists || exists.length === 0) return res.status(404).json({ error: 'Not found in trash.' });
+
+      const { error } = await db.from(table).delete().eq('id', req.params.id);
+      if (error) throw error;
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -78,8 +107,14 @@ module.exports = (table, { columns, required = [], searchCols = [] }) => ({
   // GET /:id
   getById: async (req, res) => {
     try {
-      const [rows] = await db.query(`SELECT * FROM \`${table}\` WHERE id = ? AND deleted_at IS NULL`, [req.params.id]);
-      if (rows.length === 0) return res.status(404).json({ error: 'Not found.' });
+      const { data: rows, error } = await db
+        .from(table)
+        .select('*')
+        .eq('id', req.params.id)
+        .is('deleted_at', null)
+        .limit(1);
+      if (error) throw error;
+      if (!rows || rows.length === 0) return res.status(404).json({ error: 'Not found.' });
       res.json(rows[0]);
     } catch (err) {
       res.status(500).json({ error: err.message });
@@ -95,13 +130,13 @@ module.exports = (table, { columns, required = [], searchCols = [] }) => ({
       const data = {};
       columns.forEach((col) => { if (req.body[col] !== undefined) data[col] = req.body[col]; });
 
-      const keys = Object.keys(data).map((k) => `\`${k}\``).join(', ');
-      const placeholders = Object.keys(data).map(() => '?').join(', ');
-      const [result] = await db.query(
-        `INSERT INTO \`${table}\` (${keys}) VALUES (${placeholders})`,
-        Object.values(data)
-      );
-      res.status(201).json({ ok: true, id: result.insertId });
+      const { data: result, error } = await db
+        .from(table)
+        .insert(data)
+        .select('id')
+        .single();
+      if (error) throw error;
+      res.status(201).json({ ok: true, id: result.id });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -110,27 +145,44 @@ module.exports = (table, { columns, required = [], searchCols = [] }) => ({
   // PUT /:id
   update: async (req, res) => {
     try {
-      const [exists] = await db.query(`SELECT id FROM \`${table}\` WHERE id = ? AND deleted_at IS NULL`, [req.params.id]);
-      if (exists.length === 0) return res.status(404).json({ error: 'Not found.' });
+      const { data: exists, error: fetchError } = await db
+        .from(table)
+        .select('id')
+        .eq('id', req.params.id)
+        .is('deleted_at', null)
+        .limit(1);
+      if (fetchError) throw fetchError;
+      if (!exists || exists.length === 0) return res.status(404).json({ error: 'Not found.' });
 
       const data = {};
       columns.forEach((col) => { if (req.body[col] !== undefined) data[col] = req.body[col]; });
       if (Object.keys(data).length === 0) return res.status(400).json({ error: 'No fields to update.' });
 
-      const sets = Object.keys(data).map((k) => `\`${k}\` = ?`).join(', ');
-      await db.query(`UPDATE \`${table}\` SET ${sets} WHERE id = ?`, [...Object.values(data), req.params.id]);
+      const { error } = await db.from(table).update(data).eq('id', req.params.id);
+      if (error) throw error;
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   },
 
-  // DELETE /:id  — soft delete (move to trash)
+  // DELETE /:id — soft delete (move to trash)
   remove: async (req, res) => {
     try {
-      const [exists] = await db.query(`SELECT id FROM \`${table}\` WHERE id = ? AND deleted_at IS NULL`, [req.params.id]);
-      if (exists.length === 0) return res.status(404).json({ error: 'Not found.' });
-      await db.query(`UPDATE \`${table}\` SET deleted_at = NOW() WHERE id = ?`, [req.params.id]);
+      const { data: exists, error: fetchError } = await db
+        .from(table)
+        .select('id')
+        .eq('id', req.params.id)
+        .is('deleted_at', null)
+        .limit(1);
+      if (fetchError) throw fetchError;
+      if (!exists || exists.length === 0) return res.status(404).json({ error: 'Not found.' });
+
+      const { error } = await db
+        .from(table)
+        .update({ deleted_at: new Date().toISOString() })
+        .eq('id', req.params.id);
+      if (error) throw error;
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: err.message });

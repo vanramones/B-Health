@@ -97,7 +97,70 @@ p {
   background: #0f172a;
   position: relative;
   overflow: hidden;
+  width: 264px;
   border-right: 1px solid rgba(255,255,255,0.04);
+}
+.bh-sb-group { position: relative; min-height: 14px; }
+.bh-sb-group-dot { display: none; }
+.bh-sb-label { white-space: nowrap; }
+.bh-sb-user { background: rgba(255,255,255,0.04); }
+.bh-sb-badge-pill { background: #ef4444 !important; color: #fff; }
+.bh-sb-badge-dot {
+  display: none;
+  position: absolute; top: -5px; right: -7px;
+  min-width: 17px; height: 17px; padding: 0 4px;
+  border-radius: 999px;
+  background: #ef4444; color: #fff;
+  font-size: 9.5px; font-weight: 700; line-height: 17px; text-align: center;
+  border: 2px solid #0f172a;
+  animation: bhBadgePop 0.3s ease;
+}
+@keyframes bhBadgePop { from { transform: scale(0.4); } to { transform: scale(1); } }
+
+/* ===== Desktop: collapsed icon rail that expands on hover ===== */
+@media (min-width: 992px) {
+  .bh-sidebar-rail {
+    width: 76px;
+    flex-shrink: 0;
+    position: relative;
+    height: 100vh;
+    z-index: 1040;
+  }
+  .bh-sidebar {
+    position: absolute !important;
+    top: 0; left: 0; bottom: 0;
+    width: 76px;
+    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.25s ease;
+  }
+  .bh-sidebar:hover {
+    width: 264px;
+    box-shadow: 10px 0 32px rgba(15, 23, 42, 0.35);
+  }
+  .bh-sidebar .bh-sb-label {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+  }
+  .bh-sidebar:hover .bh-sb-label {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.2s ease 0.08s;
+  }
+  .bh-sidebar .bh-sb-group-dot {
+    display: block;
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 20px; height: 1px;
+    transform: translate(-50%, -50%);
+    background: rgba(148, 163, 184, 0.25);
+    transition: opacity 0.12s ease;
+  }
+  .bh-sidebar:hover .bh-sb-group-dot { opacity: 0; }
+  /* collapsed: count bubble on the icon; expanded: pill at the end of the row */
+  .bh-sidebar .bh-sb-badge-dot { display: block; transition: opacity 0.12s ease; }
+  .bh-sidebar:hover .bh-sb-badge-dot { opacity: 0; }
+  .bh-sidebar .bh-sb-user { background: transparent; transition: background 0.2s ease; }
+  .bh-sidebar:hover .bh-sb-user { background: rgba(255,255,255,0.04); }
 }
 .bh-sidebar::before {
   content: '';
@@ -643,3 +706,5 @@ p {
   .bh-sidebar-overlay { display: none !important; }
   .bh-card-hover { break-inside: avoid; }
 }
+
+.modal-backdrop.bh-stacked-backdrop { z-index: 1060; }

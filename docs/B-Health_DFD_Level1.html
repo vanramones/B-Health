@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>B-Health — Level 1 Data Flow Diagram</title>
+<style>
+  body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #f1f5f9; color: #000; }
+  header { padding: 16px 24px 4px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 18px; margin: 0; }
+  button { background: #0f172a; color: #fff; border: 0; border-radius: 8px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
+  .wrap { padding: 10px 24px 24px; overflow-x: auto; }
+  .sheet { background: #fff; border: 1px solid #cbd5e1; padding: 16px; width: max-content; }
+  svg text { font-family: Arial, Helvetica, sans-serif; fill: #000; }
+  @media print {
+    @page { size: landscape; margin: 8mm; }
+    body { background: #fff; }
+    header { display: none; }
+    .wrap { padding: 0; overflow: visible; }
+    .sheet { border: 0; padding: 0; width: auto; }
+    svg { width: 100%; height: auto; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>B-Health: Level 1 Data Flow Diagram</h1>
+  <div style="display:flex;gap:8px">
+    <button onclick="downloadPng('dfd', 'B-Health_DFD_Level1.png')">Download as Image (PNG)</button>
+    <button onclick="window.print()">Print / Save as PDF</button>
+  </div>
+</header>
+<div class="wrap"><div class="sheet"><svg id="dfd" xmlns="http://www.w3.org/2000/svg"></svg></div></div>
+
+<script src="export-png.js"></script>
+<script>
+const W = 1030, H = 930;
+const NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('dfd');
+svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+const el = (tag, attrs, text) => {
+  const e = document.createElementNS(NS, tag);
+  Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v));
+  if (text != null) e.textContent = text;
+  svg.appendChild(e); return e;
+};
+el('defs', {}).innerHTML =
+  '<marker id="arr" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#000"/></marker>';
+
+// text label; rot = -90 for vertical labels
+const txt = (x, y, t, { size = 11, anchor = 'middle', rot = 0, bold = false } = {}) => {
+  const e = el('text', { x, y, 'font-size': size, 'text-anchor': anchor }, t);
+  if (bold) e.setAttribute('font-weight', 700);
+  if (rot) e.setAttribute('transform', `rotate(${rot} ${x} ${y})`);
+  return e;
+};
+// orthogonal data flow, arrowhead at the last point
+const flow = (pts, label, lx, ly, opts) => {
+  el('polyline', { points: pts.map((p) => p.join(',')).join(' '), fill: 'none', stroke: '#000', 'stroke-width': 1.2, 'marker-end': 'url(#arr)' });
+  if (label) txt(lx, ly, label, opts);
+};
+const entity = (x, y, w, h, name) => {
+  el('rect', { x, y, width: w, height: h, fill: '#fff', stroke: '#000', 'stroke-width': 1.3 });
+  txt(x + w / 2, y + h / 2 + 4, name, { size: 13 });
+};
+const PW = 115, PH = 70;
+const proc = (n, x, y, lines) => {
+  el('rect', { x, y, width: PW, height: PH, fill: '#fff', stroke: '#000', 'stroke-width': 1.3 });
+  el('line', { x1: x, y1: y + 20, x2: x + PW, y2: y + 20, stroke: '#000', 'stroke-width': 1.1 });
+  txt(x + PW / 2, y + 15, String(n), { size: 12, bold: true });
+  lines.forEach((l, i) => txt(x + PW / 2, y + (lines.length === 1 ? 50 : 42 + i * 14), l, { size: 11.5 }));
+};
+const store = (id, lines, x, y, w = 105) => {
+  el('rect', { x, y, width: w, height: 28, fill: '#fff', stroke: '#000', 'stroke-width': 1.3 });
+  el('line', { x1: x + 22, y1: y, x2: x + 22, y2: y + 28, stroke: '#000', 'stroke-width': 1.1 });
+  txt(x + 15, y + 14, id, { size: 11, bold: true, rot: -90 });
+  lines.forEach((l, i) => txt(x + 22 + (w - 22) / 2, y + (lines.length === 1 ? 18 : 12 + i * 12), l, { size: lines.length === 1 ? 11 : 10 }));
+};
+// process <-> store pair under a process (write ↓ on the left, read ↑ on the right)
+const storeLinks = (px, py, down, up) => {
+  const sy = py + PH + 25;
+  flow([[px + 30, py + PH], [px + 30, sy]], down, px + 26, py + PH + 15, { size: 9.5, anchor: 'end' });
+  flow([[px + 85, sy], [px + 85, py + PH]], up, px + 89, py + PH + 15, { size: 9.5, anchor: 'start' });
+};
+
+// ── External entities ──
+entity(10, 260, 105, 120, 'USER');
+entity(875, 330, 110, 100, 'ADMIN');
+
+// ── 1 Authentication ──
+proc(1, 455, 82, ['AUTHENTICATION']);
+store('D2', ['ADMIN DATA'], 455, 172);
+store('D1', ['USER DATA'], 455, 215);
+flow([[500, 152], [500, 172]], 'Verify Admin', 505, 166, { size: 9.5, anchor: 'start' });
+flow([[455, 145], [445, 145], [445, 229], [455, 229]], 'Store Account', 441, 190, { size: 9.5, rot: -90 });
+flow([[560, 229], [585, 229], [585, 118], [570, 118]], 'User Records', 597, 170, { size: 9.5, rot: 90 });
+flow([[115, 300], [432, 300], [432, 135], [455, 135]], 'Login / Registration Details', 270, 295);
+flow([[455, 100], [398, 100], [398, 280], [115, 280]], 'Authentication Result', 250, 275);
+flow([[930, 330], [930, 65], [530, 65], [530, 82]], 'Admin Login Credentials', 730, 60);
+flow([[495, 82], [495, 50], [945, 50], [945, 330]], 'Authentication Result', 730, 45);
+
+// ── 2 Manage Registered Users ──
+proc(2, 210, 133, ['MANAGE', 'REGISTERED USERS']);
+store('D1', ['USER DATA'], 215, 228);
+storeLinks(210, 133, 'User Records', 'Confirmation');
+flow([[955, 330], [955, 20], [267, 20], [267, 133]], 'Registered User Information', 420, 15);
+flow([[60, 260], [60, 168], [210, 168]], 'Profile Updates', 130, 163);
+
+// ── 3 Manage Appointments ──
+proc(3, 712, 133, ['MANAGE', 'APPOINTMENTS']);
+store('D3', ['APPOINTMENT', 'DATA'], 717, 228);
+storeLinks(712, 133, 'Appointment Records', 'Confirmation');
+flow([[900, 330], [900, 113], [770, 113], [770, 133]], 'Appointment Approval / Reschedule', 835, 108);
+flow([[827, 175], [885, 175], [885, 330]], 'Appointment Requests & Notes', 879, 255, { size: 9.5, rot: -90 });
+flow([[115, 325], [630, 325], [630, 160], [712, 160]], 'Appointment Request / Reschedule Reply', 400, 320);
+flow([[712, 190], [645, 190], [645, 345], [115, 345]], 'Appointment Status / Reschedule Notice', 400, 358);
+
+// ── 4 Manage Emergency Contacts ──
+proc(4, 208, 378, ['MANAGE EMERGENCY', 'CONTACTS']);
+store('D4', ['EMERGENCY', 'CONTACT DATA'], 213, 473);
+storeLinks(208, 378, 'Contact Records', 'Confirmation');
+flow([[875, 360], [263, 360], [263, 378]], 'Emergency Contact Information', 420, 372);
+flow([[208, 413], [100, 413], [100, 380]], 'Emergency Contacts', 155, 408, { size: 10 });
+
+// ── 5 Manage Health Record ──
+proc(5, 476, 405, ['MANAGE HEALTH', 'RECORD']);
+store('D5', ['HEALTH', 'RECORD DATA'], 481, 500);
+storeLinks(476, 405, 'Health Record Details', 'Confirmation');
+flow([[875, 385], [533, 385], [533, 405]], 'Updated Health Record', 640, 380);
+flow([[476, 468], [455, 468], [455, 550], [75, 550], [75, 380]], 'View Health Records', 265, 545);
+
+// ── 6 Manage Announcements ──
+proc(6, 752, 466, ['MANAGE', 'ANNOUNCEMENTS']);
+store('D6', ['ANNOUNCEMENT', 'DATA'], 757, 561);
+storeLinks(752, 466, 'Announcement', 'Confirmation');
+flow([[875, 400], [805, 400], [805, 466]], 'Published Announcement', 798, 433, { size: 9.5, rot: -90 });
+flow([[752, 525], [720, 525], [720, 573], [50, 573], [50, 380]], 'View Announcement', 400, 568);
+
+// ── 7 Manage Health Services ──
+proc(7, 550, 790, ['MANAGE HEALTH', 'SERVICES']);
+store('D7', ['SERVICE', 'DATA'], 555, 885);
+storeLinks(550, 790, 'Service Information', 'Confirmation');
+flow([[915, 430], [915, 675], [610, 675], [610, 790]], 'Health Services Data', 760, 670);
+flow([[550, 850], [530, 850], [530, 912], [25, 912], [25, 380]], 'View Services', 140, 907);
+
+// ── 8 Manage Notification ──
+proc(8, 233, 745, ['MANAGE', 'NOTIFICATION']);
+store('D8', ['NOTIFICATION', 'DATA'], 238, 840);
+storeLinks(233, 745, 'Notification Records', 'Confirmation');
+flow([[900, 430], [900, 648], [290, 648], [290, 745]], 'Notification Data', 600, 643);
+flow([[233, 785], [38, 785], [38, 380]], 'Notifications (In-App & Push)', 135, 780, { size: 10 });
+
+// ── 9 Dashboard & Reports ──
+// no report table exists; process 9 reads/aggregates from the real data stores
+proc(9, 885, 755, ['DASHBOARD &', 'REPORTS']);
+flow([[769, 256], [769, 285], [735, 285], [735, 700], [862, 700], [862, 782], [885, 782]], 'Appointment Statistics', 731, 480, { size: 10, rot: -90 });
+flow([[586, 514], [700, 514], [700, 795], [885, 795]], 'Health Record Statistics', 694, 615, { size: 10, rot: -90 });
+flow([[660, 899], [874, 899], [874, 808], [885, 808]], 'Service Statistics', 868, 856, { size: 10, rot: -90 });
+flow([[955, 430], [955, 755]], 'Report Request', 948, 600, { size: 10, rot: -90 });
+flow([[1000, 790], [1018, 790], [1018, 380], [985, 380]], 'Dashboard & Reports', 1011, 585, { size: 10, rot: -90 });
+</script>
+</body>
+</html>
