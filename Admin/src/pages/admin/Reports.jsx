@@ -8,15 +8,18 @@ import {
 import {
   Download, FileText, TrendingUp, Activity, Syringe, Printer,
   FileSpreadsheet, File, Calendar, CheckCircle2, ArrowUpRight,
-  ArrowDownRight, BarChart3, RefreshCw, Loader, FileDown,
+  ArrowDownRight, BarChart3, RefreshCw, Loader, FileDown, Search, Filter, X, History, Eye,
 } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { supabase } from '../../config/supabase';
-import { appointmentCode } from '../../utils/recordCodes';
+import { useAuth } from '../../context/AuthContext';
+import { appointmentCode, healthRecordCode } from '../../utils/recordCodes';
+import { formatName, nameSortKey, nameColumns, nameFields, NAME_HEADERS } from '../../utils/nameFormat';
+import {
+  ORG, periodText, dateTimeText, makeReportNo, buildReportPdf, savePdf, printPdf, addSheet, saveWorkbook,
+} from '../../utils/reportDocument';
 import * as XLSX from 'xlsx';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 /* ── Helpers ── */
 const downloadCSV = (filename, headers, rows) => {
@@ -28,6 +31,45 @@ const downloadCSV = (filename, headers, rows) => {
   URL.revokeObjectURL(url);
 };
 const fmtNum = (n) => (n ?? 0).toLocaleString();
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+
+/* ── Report status / grouping helpers ── */
+const APPT_STATUSES = ['pending', 'approved', 'completed', 'rejected', 'cancelled'];
+const HR_STATUSES = ['ongoing', 'follow-up', 'closed'];
+const STATUS_COLORS = {
+  pending: '#f59e0b', approved: '#3b82f6', completed: '#16a34a', rejected: '#dc2626', cancelled: '#94a3b8',
+  ongoing: '#ef4444', 'follow-up': '#f97316', closed: '#0ea5e9',
+};
+const statusLabel = (s) => (s === 'follow-up' ? 'Follow-up' : cap(s));
+const REPORT_TITLES = { overall: 'Overall Health Center Report', appointments: 'Appointments Report', 'health-records': 'Health Records Report' };
+const BAR_PALETTE = ['#16a34a', '#3b82f6', '#f59e0b', '#ec4899', '#a855f7', '#0ea5e9', '#ef4444', '#64748b'];
+const withPct = (items) => {
+  const total = items.reduce((s, i) => s + i.value, 0);
+  return items.map((i) => ({ ...i, pct: total ? Math.round((i.value / total) * 1000) / 10 : 0 }));
+};
+const countBy = (list, key) => withPct(Object.entries(list.reduce((m, x) => {
+  const k = x[key] || 'Other'; m[k] = (m[k] || 0) + 1; return m;
+}, {})).map(([label, value]) => ({ key: label, label, value })).sort((a, b) => b.value - a.value)
+  .map((x, i) => ({ ...x, color: BAR_PALETTE[i % BAR_PALETTE.length] })));
+const statusCounts = (list, statuses) => withPct(statuses.map((s) => ({
+  key: s, label: statusLabel(s), value: list.filter((x) => x.status === s).length, color: STATUS_COLORS[s],
+})));
+const periodOf = (dateStr, mode) => {
+  const d = new Date(`${String(dateStr).slice(0, 10)}T00:00:00`);
+  if (mode === 'monthly') {
+    return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, label: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}` };
+  }
+  const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return { key: mon.toISOString().slice(0, 10), label: `Wk of ${MONTH_NAMES[mon.getMonth()]} ${mon.getDate()}` };
+};
+const HISTORY_KEY = 'bh_report_history';
+const loadHistory = () => { try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch { return []; } };
+const HISTORY_STATUS = {
+  Generated: { bg: '#eff6ff', color: '#1d4ed8' },
+  Printed: { bg: '#f5f3ff', color: '#6d28d9' },
+  'Exported (PDF)': { bg: '#fef2f2', color: '#b91c1c' },
+  'Exported (Excel)': { bg: '#f0fdf4', color: '#15803d' },
+};
 
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const SERVICE_COLORS = {
@@ -62,16 +104,117 @@ const StatusBadge = ({ status }) => {
     pending: { bg: '#fef3c7', color: '#b45309' },
     approved: { bg: '#dbeafe', color: '#1d4ed8' },
     rejected: { bg: '#fee2e2', color: '#b91c1c' },
+    cancelled: { bg: '#f1f5f9', color: '#475569' },
+    ongoing: { bg: '#fee2e2', color: '#b91c1c' },
+    'follow-up': { bg: '#ffedd5', color: '#c2410c' },
+    closed: { bg: '#e0f2fe', color: '#0369a1' },
   };
   const s = styles[status] || { bg: '#f3f4f6', color: '#6b7280' };
   return (
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: 999,
-      fontSize: 10, fontWeight: 600, backgroundColor: s.bg, color: s.color,
-      textTransform: 'capitalize',
+      fontSize: 10, fontWeight: 600, backgroundColor: s.bg, color: s.color, whiteSpace: 'nowrap',
     }}>
-      {status}
+      {statusLabel(status)}
     </span>
+  );
+};
+
+/* ── Generated-report building blocks ── */
+const SectionTitle = ({ num, children, right }) => (
+  <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+    <div className="d-flex align-items-center gap-2" style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+      <span style={{ width: 4, height: 16, borderRadius: 2, background: '#059669', display: 'inline-block' }} />
+      {num && <span style={{ color: '#059669' }}>{num}.</span>} {children}
+    </div>
+    {right}
+  </div>
+);
+
+const Panel = ({ children, className = 'mb-3' }) => (
+  <div className={`p-3 rounded-3 ${className}`} style={{ background: '#fff', border: '1px solid #e2e8f0' }}>{children}</div>
+);
+
+const KpiCards = ({ items }) => (
+  <Row className="g-2 mb-3">
+    {items.map((k) => (
+      <Col key={k.label} xs={6} md>
+        <div className="text-center p-2 rounded-3 h-100" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: k.color, lineHeight: 1.2 }}>{k.value}</div>
+          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 600 }}>{k.label}</div>
+        </div>
+      </Col>
+    ))}
+  </Row>
+);
+
+const StatusDonut = ({ title, items }) => {
+  const total = items.reduce((s, i) => s + i.value, 0);
+  const data = items.filter((i) => i.value > 0);
+  return (
+    <div className="h-100">
+      <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>{title}</div>
+      <div className="d-flex align-items-center gap-3">
+        <div style={{ width: 130, height: 130, position: 'relative', flexShrink: 0 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={data.length ? data : [{ label: 'None', value: 1, color: '#e2e8f0' }]} dataKey="value" nameKey="label"
+                innerRadius={40} outerRadius={60} paddingAngle={data.length > 1 ? 2 : 0} stroke="none">
+                {(data.length ? data : [{ color: '#e2e8f0' }]).map((d, i) => <Cell key={i} fill={d.color} />)}
+              </Pie>
+              {data.length > 0 && <Tooltip formatter={(val, name) => [`${val}`, name]} />}
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="position-absolute top-50 start-50 translate-middle text-center" style={{ pointerEvents: 'none' }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>{total}</div>
+            <div style={{ fontSize: 9, color: '#94a3b8', fontWeight: 600 }}>TOTAL</div>
+          </div>
+        </div>
+        <div className="flex-grow-1" style={{ minWidth: 0 }}>
+          {items.map((i) => (
+            <div key={i.key} className="d-flex align-items-center gap-2" style={{ fontSize: 11, marginBottom: 3 }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: i.color, flexShrink: 0 }} />
+              <span style={{ color: '#374151', flex: 1 }}>{i.label}</span>
+              <span style={{ fontWeight: 700, color: '#0f172a' }}>{i.value}</span>
+              <span style={{ color: '#94a3b8', width: 40, textAlign: 'right' }}>{i.pct}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PercentTable = ({ firstCol, items }) => {
+  const total = items.reduce((s, i) => s + i.value, 0);
+  return (
+    <Table size="sm" className="mb-0 align-middle" style={{ fontSize: 12 }}>
+      <thead style={{ backgroundColor: '#f9fafb' }}>
+        <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
+          <th className="px-3 py-2">{firstCol}</th><th className="py-2 text-end">Count</th>
+          <th className="py-2" style={{ width: '45%' }}>Distribution</th><th className="py-2 text-end pe-3">%</th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.map((i) => (
+          <tr key={i.key}>
+            <td className="px-3 py-2"><span className="d-inline-flex align-items-center gap-2">
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: i.color }} />{i.label}</span></td>
+            <td className="py-2 text-end fw-bold">{i.value}</td>
+            <td className="py-2"><div style={{ height: 6, borderRadius: 3, background: '#f1f5f9' }}>
+              <div style={{ width: `${i.pct}%`, height: '100%', borderRadius: 3, background: i.color }} /></div></td>
+            <td className="py-2 text-end pe-3" style={{ color: '#64748b' }}>{i.pct}%</td>
+          </tr>
+        ))}
+        {!items.length && <tr><td colSpan={4} className="text-center py-3" style={{ color: '#9ca3af' }}>No data.</td></tr>}
+      </tbody>
+      <tfoot>
+        <tr style={{ background: '#f8fafc', fontWeight: 700 }}>
+          <td className="px-3 py-2">TOTAL</td><td className="py-2 text-end">{total}</td><td />
+          <td className="py-2 text-end pe-3">{total ? '100%' : '0%'}</td>
+        </tr>
+      </tfoot>
+    </Table>
   );
 };
 
@@ -108,12 +251,118 @@ const Reports = () => {
   const [rptEndDate, setRptEndDate] = useState(null);
   const [rptData, setRptData] = useState(null);
   const [rptStatus, setRptStatus] = useState('all');
-  const rptAppts = useMemo(() => {
-    const list = rptData?.appointments || [];
-    return rptStatus === 'all' ? list : list.filter((a) => a.status === rptStatus);
-  }, [rptData, rptStatus]);
-  const rptStatusLabel = rptStatus === 'all' ? 'All Statuses' : rptStatus.charAt(0).toUpperCase() + rptStatus.slice(1);
+  const [rptCategory, setRptCategory] = useState('all');
+  const [rptSearch, setRptSearch] = useState('');
+  const [rptSort, setRptSort] = useState('date');
   const [rptLoading, setRptLoading] = useState(false);
+  const [history, setHistory] = useState(loadHistory);
+  const { user } = useAuth();
+  const preparedBy = user?.full_name || user?.name || user?.username || 'Administrator';
+
+  /* ── Filtered + summarized view of the generated report ── */
+  const rptView = useMemo(() => {
+    if (!rptData) return null;
+    const kind = rptData.kind;
+    const q = rptSearch.trim().toLowerCase();
+    const matchQ = (name, code) => !q || formatName(name).toLowerCase().includes(q)
+      || String(name || '').toLowerCase().includes(q) || code.toLowerCase().includes(q);
+    const order = (list, key) => [...list].sort(rptSort === 'name'
+      ? (a, b) => nameSortKey(a[key]).localeCompare(nameSortKey(b[key])) || String(a.date).localeCompare(String(b.date))
+      : (a, b) => String(a.date).localeCompare(String(b.date)));
+    const useApptFilters = kind === 'appointments';
+    const useHrFilters = kind === 'health-records';
+
+    const appts = order((rptData.appointments || []).filter((a) => matchQ(a.name, appointmentCode(a))
+      && (!useApptFilters || rptStatus === 'all' || a.status === rptStatus)
+      && (!useApptFilters || rptCategory === 'all' || a.service === rptCategory)), 'name');
+    const hrs = order((rptData.healthRecords || []).filter((r) => matchQ(r.patient, healthRecordCode(r))
+      && (!useHrFilters || rptStatus === 'all' || r.status === rptStatus)
+      && (!useHrFilters || rptCategory === 'all' || r.type === rptCategory)), 'patient');
+
+    const trendMap = {};
+    const bump = (date, field) => {
+      if (!date) return;
+      const { key, label } = periodOf(date, rptData.mode);
+      trendMap[key] = trendMap[key] || { key, label, appointments: 0, completed: 0, records: 0 };
+      trendMap[key][field] += 1;
+    };
+    appts.forEach((a) => { bump(a.date, 'appointments'); if (a.status === 'completed') bump(a.date, 'completed'); });
+    hrs.forEach((r) => bump(r.date, 'records'));
+
+    const apptStatus = statusCounts(appts, APPT_STATUSES);
+    const hrStatus = statusCounts(hrs, HR_STATUSES);
+    const services = countBy(appts, 'service');
+    const types = countBy(hrs, 'type');
+    const completed = appts.filter((a) => a.status === 'completed').length;
+    const rate = appts.length ? Math.round((completed / appts.length) * 1000) / 10 : 0;
+    const followUps = hrs.filter((r) => r.status === 'follow-up').length;
+    const patients = new Set([...appts.map((a) => nameSortKey(a.name)), ...hrs.map((r) => nameSortKey(r.patient))].filter(Boolean)).size;
+    const get = (arr, k) => arr.find((x) => x.key === k)?.value || 0;
+
+    const kpis = kind === 'appointments' ? [
+      { label: 'Total Appointments', value: appts.length, color: '#1d4ed8' },
+      { label: 'Completed', value: completed, color: '#16a34a' },
+      { label: 'Pending', value: get(apptStatus, 'pending'), color: '#b45309' },
+      { label: 'Completion Rate', value: `${rate}%`, color: '#be185d' },
+      { label: 'Patients Served', value: patients, color: '#7c3aed' },
+    ] : kind === 'health-records' ? [
+      { label: 'Total Records', value: hrs.length, color: '#1d4ed8' },
+      { label: 'Ongoing', value: get(hrStatus, 'ongoing'), color: '#dc2626' },
+      { label: 'Follow-up', value: followUps, color: '#ea580c' },
+      { label: 'Closed', value: get(hrStatus, 'closed'), color: '#0284c7' },
+      { label: 'Patients', value: patients, color: '#7c3aed' },
+    ] : [
+      { label: 'Appointments', value: appts.length, color: '#1d4ed8' },
+      { label: 'Completed', value: completed, color: '#16a34a' },
+      { label: 'Completion Rate', value: `${rate}%`, color: '#be185d' },
+      { label: 'Health Records', value: hrs.length, color: '#0284c7' },
+      { label: 'For Follow-up', value: followUps, color: '#ea580c' },
+      { label: 'Patients', value: patients, color: '#7c3aed' },
+    ];
+
+    // Narrative summary of findings
+    const period = periodText(rptData.start, rptData.end);
+    const topSvc = services[0]; const topType = types[0];
+    const lines = [];
+    if (kind !== 'health-records') {
+      lines.push(appts.length
+        ? `From ${period}, the health center recorded ${appts.length} appointment${appts.length === 1 ? '' : 's'}, of which ${completed} ${completed === 1 ? 'was' : 'were'} completed (${rate}% completion rate), ${get(apptStatus, 'pending')} pending, ${get(apptStatus, 'approved')} approved, ${get(apptStatus, 'rejected')} rejected and ${get(apptStatus, 'cancelled')} cancelled.${topSvc ? ` The most availed service was ${topSvc.label} (${topSvc.value}, ${topSvc.pct}%).` : ''}`
+        : `No appointments were recorded from ${period} for the selected filters.`);
+    }
+    if (kind !== 'appointments') {
+      lines.push(hrs.length
+        ? `${kind === 'overall' ? 'A total of' : `From ${period}, a total of`} ${hrs.length} health record${hrs.length === 1 ? ' was' : 's were'} documented: ${get(hrStatus, 'ongoing')} ongoing, ${followUps} for follow-up and ${get(hrStatus, 'closed')} closed.${topType ? ` Most records were ${topType.label} (${topType.value}).` : ''}`
+        : `No health records were documented from ${period} for the selected filters.`);
+    }
+    lines.push(`${patients} unique patient${patients === 1 ? '' : 's'} ${patients === 1 ? 'is' : 'are'} included in this report.`);
+
+    const filterParts = [];
+    if (rptSearch.trim()) filterParts.push(`Search: "${rptSearch.trim()}"`);
+    if (rptStatus !== 'all' && kind !== 'overall') filterParts.push(`Status: ${statusLabel(rptStatus)}`);
+    if (rptCategory !== 'all' && kind !== 'overall') filterParts.push(`${kind === 'appointments' ? 'Service' : 'Type'}: ${rptCategory}`);
+    filterParts.push(`Sorted by ${rptSort === 'name' ? 'patient name (A–Z)' : 'date'}`);
+
+    return {
+      kind, appts, hrs, apptStatus, hrStatus, services, types, kpis, completed, rate, followUps, patients,
+      summary: lines.join(' '),
+      trend: Object.values(trendMap).sort((a, b) => a.key.localeCompare(b.key)),
+      meta: {
+        title: `${rptData.mode === 'weekly' ? 'Weekly' : 'Monthly'} ${REPORT_TITLES[kind]}`,
+        period, reportNo: rptData.reportNo, generatedAt: rptData.generatedAt, preparedBy,
+        filters: filterParts.join('; '),
+      },
+    };
+  }, [rptData, rptSearch, rptSort, rptStatus, rptCategory, preparedBy]);
+
+  const updateHistory = useCallback((reportNo, patch) => {
+    setHistory((list) => {
+      const next = patch === null
+        ? list.filter((h) => h.reportNo !== reportNo)
+        : list.map((h) => (h.reportNo === reportNo ? { ...h, ...patch } : h));
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   /* ── Live data state ── */
   const [appointments, setAppointments] = useState([]);
@@ -354,13 +603,13 @@ const Reports = () => {
 
     /* --- Sheet 2: All Appointments --- */
     const apptRows = appts.map(a => ({
-      'Date': a.date || '', 'Time': a.time || '', 'Patient': a.name || '',
+      'Date': a.date || '', 'Time': a.time || '', ...nameFields(a.name),
       'Service': a.service || '', 'Status': a.status || '',
       'Handled By': a.handled_by || '', 'Notes': a.notes || '',
     }));
-    if (apptRows.length === 0) apptRows.push({ 'Date': 'No records', 'Time': '', 'Patient': '', 'Service': '', 'Status': '', 'Handled By': '', 'Notes': '' });
+    if (apptRows.length === 0) apptRows.push({ 'Date': 'No records', 'Time': '', 'Last Name': '', 'First Name': '', 'Middle Name': '', 'Service': '', 'Status': '', 'Handled By': '', 'Notes': '' });
     const ws2 = XLSX.utils.json_to_sheet(apptRows);
-    ws2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 20 }, { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 24 }];
+    ws2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(wb, ws2, 'Appointments');
 
     /* --- Sheet 3: All Vaccinations --- */
@@ -368,13 +617,13 @@ const Reports = () => {
       ? vaccinations
       : vaccinations.filter(v => v.vaccine?.toLowerCase().includes(selectedService.toLowerCase().split(' ')[0]));
     const vaccRows = filteredVacc.map(v => ({
-      'Date': v.date || '', 'Patient': v.patient || '', 'Vaccine': v.vaccine || '',
+      'Date': v.date || '', ...nameFields(v.patient), 'Vaccine': v.vaccine || '',
       'Dose': v.dose || '', 'Status': v.status || '',
       'Administered By': v.administered_by || '', 'Site': v.site || '', 'Notes': v.notes || '',
     }));
-    if (vaccRows.length === 0) vaccRows.push({ 'Date': 'No records', 'Patient': '', 'Vaccine': '', 'Dose': '', 'Status': '', 'Administered By': '', 'Site': '', 'Notes': '' });
+    if (vaccRows.length === 0) vaccRows.push({ 'Date': 'No records', 'Last Name': '', 'First Name': '', 'Middle Name': '', 'Vaccine': '', 'Dose': '', 'Status': '', 'Administered By': '', 'Site': '', 'Notes': '' });
     const ws3 = XLSX.utils.json_to_sheet(vaccRows);
-    ws3['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 16 }, { wch: 8 }, { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 24 }];
+    ws3['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 8 }, { wch: 12 }, { wch: 16 }, { wch: 10 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(wb, ws3, 'Vaccinations');
 
     /* --- Sheet 4: Service Breakdown --- */
@@ -435,92 +684,18 @@ const Reports = () => {
   const handlePrint = () => window.print();
   const handleGenerate = () => { fetchData(); setShowPreview(true); };
 
-  /* ── PDF Export Helper ── */
-  const buildPDF = (title, sections) => {
-    const doc = new jsPDF();
-    const pageW = doc.internal.pageSize.getWidth();
-    let y = 15;
-
-    // Header bar
-    doc.setFillColor(15, 23, 42); // #0f172a
-    doc.rect(0, 0, pageW, 28, 'F');
-    doc.setFontSize(16);
-    doc.setTextColor(255, 255, 255);
-    doc.text(title, 14, 18);
-    doc.setFontSize(9);
-    doc.setTextColor(200, 200, 200);
-    doc.text(`Generated: ${new Date().toLocaleString()}`, pageW - 14, 18, { align: 'right' });
-    y = 36;
-
-    sections.forEach((sec) => {
-      if (y > doc.internal.pageSize.getHeight() - 30) { doc.addPage(); y = 15; }
-
-      if (sec.type === 'subtitle') {
-        doc.setFontSize(12);
-        doc.setTextColor(17, 24, 39);
-        doc.text(sec.text, 14, y);
-        y += 8;
-      }
-
-      if (sec.type === 'stats') {
-        doc.setFontSize(9);
-        const colW = (pageW - 28) / sec.items.length;
-        sec.items.forEach((item, i) => {
-          const x = 14 + i * colW;
-          doc.setFillColor(248, 250, 252);
-          doc.roundedRect(x, y, colW - 4, 22, 3, 3, 'F');
-          doc.setTextColor(17, 24, 39);
-          doc.setFontSize(14);
-          doc.text(String(item.value), x + (colW - 4) / 2, y + 11, { align: 'center' });
-          doc.setFontSize(7);
-          doc.setTextColor(107, 114, 128);
-          doc.text(item.label, x + (colW - 4) / 2, y + 18, { align: 'center' });
-        });
-        y += 28;
-      }
-
-      if (sec.type === 'table') {
-        autoTable(doc, {
-          startY: y,
-          head: [sec.headers],
-          body: sec.rows,
-          theme: 'grid',
-          headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontSize: 8, fontStyle: 'bold' },
-          bodyStyles: { fontSize: 8, textColor: [55, 65, 81] },
-          alternateRowStyles: { fillColor: [248, 250, 252] },
-          margin: { left: 14, right: 14 },
-          styles: { cellPadding: 3, lineColor: [229, 231, 235], lineWidth: 0.3 },
-        });
-        y = doc.lastAutoTable.finalY + 10;
-      }
-
-      if (sec.type === 'info') {
-        doc.setFontSize(8);
-        doc.setTextColor(107, 114, 128);
-        doc.text(sec.text, 14, y);
-        y += 6;
-      }
-    });
-
-    // Footer
-    const pages = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= pages; i++) {
-      doc.setPage(i);
-      const h = doc.internal.pageSize.getHeight();
-      doc.setFontSize(7);
-      doc.setTextColor(156, 163, 175);
-      doc.text('B-Health Management System', 14, h - 8);
-      doc.text(`Page ${i} of ${pages}`, pageW - 14, h - 8, { align: 'right' });
-    }
-
-    return doc;
+  /* ── Official report metadata (heading) for ad-hoc exports ── */
+  const quickMeta = (title, start, end, filters, kind = 'service') => {
+    const now = new Date();
+    const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
+    return { title, period: periodText(iso(start), iso(end)), reportNo: makeReportNo(kind, now), generatedAt: now, preparedBy, filters };
   };
 
   /* ── Main page PDF export ── */
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     const svcLabel = selectedService === 'all' ? 'All Services' : selectedService;
+    const meta = quickMeta(`${cap(dateMode)} Health Center Analytics Report`, startDate, endDate, `Service: ${svcLabel}`);
     const sections = [
-      { type: 'info', text: `Service: ${svcLabel} | Period: ${dateLabel} | Mode: ${dateMode}` },
       { type: 'subtitle', text: 'Summary' },
       { type: 'stats', items: [
         { label: 'Total Appointments', value: totals.totalAppointments },
@@ -529,14 +704,13 @@ const Reports = () => {
         { label: 'Completion Rate', value: `${totals.completionRate}%` },
       ]},
       { type: 'subtitle', text: 'Appointments' },
-      { type: 'table', headers: ['Date', 'Time', 'Patient', 'Service', 'Status', 'Handled By'],
-        rows: filteredAppointments.slice(0, 100).map(a => [a.date, a.time || '', a.name || '', a.service || '', a.status || '', a.handled_by || '']) },
+      { type: 'table', headers: ['Date', 'Time', ...NAME_HEADERS, 'Service', 'Status', 'Handled By'],
+        rows: filteredAppointments.slice(0, 200).map(a => [a.date, a.time || '', ...nameColumns(a.name), a.service || '', statusLabel(a.status), a.handled_by || '']) },
       { type: 'subtitle', text: 'Service Breakdown' },
       { type: 'table', headers: ['Service', 'Count', 'Percentage'],
         rows: serviceBreakdown.map(s => [s.name, String(s.value), `${s.pct}%`]) },
     ];
-    const doc = buildPDF(`B-Health Report — ${svcLabel}`, sections);
-    doc.save(`B-Health-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+    savePdf(await buildReportPdf(meta, sections), meta);
   };
 
   /* ── Per-service report generation with custom date range ── */
@@ -551,6 +725,7 @@ const Reports = () => {
   };
 
   /* ── Open separate report modal (overall/appointments/health-records) ── */
+  const resetReportFilters = () => { setRptStatus('all'); setRptCategory('all'); setRptSearch(''); setRptSort('date'); };
   const openReportModal = (type) => {
     const d = new Date(); d.setMonth(d.getMonth() - 3); d.setDate(1);
     setReportModal(type);
@@ -558,106 +733,44 @@ const Reports = () => {
     setRptStartDate(d);
     setRptEndDate(new Date());
     setRptData(null);
-    setRptStatus('all');
+    resetReportFilters();
     setRptLoading(false);
   };
 
-  /* ── Generate separate report ── */
-  const generateReport = async () => {
-    if (!reportModal || !rptStartDate || !rptEndDate) return;
+  /* ── Generate separate report (also reused to re-open a report from history) ── */
+  const generateReport = async (opts = {}) => {
+    const kind = opts.kind || reportModal;
+    const start = opts.start || rptStartDate?.toISOString().slice(0, 10);
+    const end = opts.end || rptEndDate?.toISOString().slice(0, 10);
+    const mode = opts.mode || rptDateMode;
+    if (!kind || !start || !end) return;
     setRptLoading(true);
     try {
-      const isoStart = rptStartDate.toISOString().slice(0, 10);
-      const isoEnd = rptEndDate.toISOString().slice(0, 10);
-
-      if (reportModal === 'overall') {
-        const [apptRes, vaccRes, hrRes] = await Promise.all([
-          supabase.from('appointments').select('id, name, date, time, status, service, handled_by, notes')
-            .is('deleted_at', null).gte('date', isoStart).lte('date', isoEnd).order('date', { ascending: true }),
-          supabase.from('vaccinations').select('id, patient, date, vaccine, dose, status, administered_by')
-            .is('deleted_at', null).gte('date', isoStart).lte('date', isoEnd).order('date', { ascending: true }),
-          supabase.from('health_records').select('id, patient, type, diagnosis, doctor, date, status, notes')
-            .is('deleted_at', null).gte('date', isoStart).lte('date', isoEnd).order('date', { ascending: true }),
-        ]);
-        const appts = apptRes.data || [];
-        const vaccs = vaccRes.data || [];
-        const hrs = hrRes.data || [];
-        const completed = appts.filter(a => a.status === 'completed').length;
-        const rate = appts.length ? Math.round((completed / appts.length) * 100) : 0;
-        setRptData({
-          appointments: appts, vaccinations: vaccs, healthRecords: hrs,
-          totals: {
-            appointments: appts.length, completed, vaccinations: vaccs.length,
-            healthRecords: hrs.length, completionRate: rate,
-          },
-          dateRange: { start: isoStart, end: isoEnd },
-        });
-      } else if (reportModal === 'appointments') {
-        const apptRes = await supabase.from('appointments').select('id, name, date, time, status, service, handled_by, notes')
-          .is('deleted_at', null).gte('date', isoStart).lte('date', isoEnd).order('date', { ascending: true });
-        const appts = apptRes.data || [];
-        const completed = appts.filter(a => a.status === 'completed').length;
-        const pending = appts.filter(a => a.status === 'pending').length;
-        const approved = appts.filter(a => a.status === 'approved').length;
-        const rejected = appts.filter(a => a.status === 'rejected').length;
-        const rate = appts.length ? Math.round((completed / appts.length) * 100) : 0;
-        // Build chart data
-        const chartMap = {};
-        appts.forEach(a => {
-          if (!a.date) return;
-          const d = new Date(a.date);
-          const key = rptDateMode === 'monthly'
-            ? `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
-            : `${d.getFullYear()}-W${Math.ceil((Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 86400000) + new Date(d.getFullYear(), 0, 1).getDay() + 1) / 7)}`;
-          const label = rptDateMode === 'monthly' ? MONTH_NAMES[d.getMonth()] : `W${key.split('-W')[1]}`;
-          if (!chartMap[key]) chartMap[key] = { label, total: 0, completed: 0, pending: 0, sortKey: key };
-          chartMap[key].total += 1;
-          if (a.status === 'completed') chartMap[key].completed += 1;
-          else if (a.status === 'pending') chartMap[key].pending += 1;
-        });
-        // Service breakdown
-        const svcMap = {};
-        appts.forEach(a => {
-          const svc = a.service || 'Other';
-          svcMap[svc] = (svcMap[svc] || 0) + 1;
-        });
-        setRptData({
-          appointments: appts,
-          totals: { total: appts.length, completed, pending, approved, rejected, rate },
-          chart: Object.values(chartMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
-          serviceBreakdown: Object.entries(svcMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
-          dateRange: { start: isoStart, end: isoEnd },
-        });
-      } else if (reportModal === 'health-records') {
-        const hrRes = await supabase.from('health_records').select('id, patient, type, diagnosis, doctor, date, status, notes, prescription')
-          .is('deleted_at', null).gte('date', isoStart).lte('date', isoEnd).order('date', { ascending: true });
-        const hrs = hrRes.data || [];
-        const closed = hrs.filter(r => r.status === 'closed').length;
-        const open = hrs.filter(r => r.status === 'open' || r.status === 'active').length;
-        // Type breakdown
-        const typeMap = {};
-        hrs.forEach(r => {
-          const t = r.type || 'Other';
-          typeMap[t] = (typeMap[t] || 0) + 1;
-        });
-        // Chart data
-        const chartMap = {};
-        hrs.forEach(r => {
-          if (!r.date) return;
-          const d = new Date(r.date);
-          const key = rptDateMode === 'monthly'
-            ? `${d.getFullYear()}-${String(d.getMonth()).padStart(2, '0')}`
-            : `${d.getFullYear()}-W${Math.ceil((Math.floor((d - new Date(d.getFullYear(), 0, 1)) / 86400000) + new Date(d.getFullYear(), 0, 1).getDay() + 1) / 7)}`;
-          const label = rptDateMode === 'monthly' ? MONTH_NAMES[d.getMonth()] : `W${key.split('-W')[1]}`;
-          if (!chartMap[key]) chartMap[key] = { label, records: 0, sortKey: key };
-          chartMap[key].records += 1;
-        });
-        setRptData({
-          healthRecords: hrs,
-          totals: { total: hrs.length, closed, open },
-          typeBreakdown: Object.entries(typeMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
-          chart: Object.values(chartMap).sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
-          dateRange: { start: isoStart, end: isoEnd },
+      const [apptRes, hrRes] = await Promise.all([
+        kind !== 'health-records'
+          ? supabase.from('appointments').select('id, name, date, time, status, service, handled_by, notes')
+            .is('deleted_at', null).gte('date', start).lte('date', end).order('date', { ascending: true })
+          : { data: [] },
+        kind !== 'appointments'
+          ? supabase.from('health_records').select('id, patient, type, diagnosis, doctor, date, status, notes, prescription')
+            .is('deleted_at', null).gte('date', start).lte('date', end).order('date', { ascending: true })
+          : { data: [] },
+      ]);
+      const generatedAt = new Date();
+      const reportNo = opts.reportNo || makeReportNo(kind, generatedAt);
+      const appointments = apptRes.data || [];
+      const healthRecords = hrRes.data || [];
+      setRptData({ kind, mode, start, end, reportNo, generatedAt: generatedAt.toISOString(), appointments, healthRecords });
+      if (!opts.reportNo) {
+        const entry = {
+          reportNo, kind, mode, start, end, preparedBy, status: 'Generated',
+          title: `${mode === 'weekly' ? 'Weekly' : 'Monthly'} ${REPORT_TITLES[kind]}`,
+          records: appointments.length + healthRecords.length, generatedAt: generatedAt.toISOString(),
+        };
+        setHistory((list) => {
+          const next = [entry, ...list].slice(0, 30);
+          localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+          return next;
         });
       }
     } catch (err) {
@@ -667,201 +780,113 @@ const Reports = () => {
     }
   };
 
-  /* ── Export separate report as Excel ── */
-  const exportReport = () => {
-    if (!rptData || !reportModal) return;
-    const wb = XLSX.utils.book_new();
-    const today = new Date().toISOString().split('T')[0];
-    const { dateRange } = rptData;
-
-    if (reportModal === 'overall') {
-      // Summary sheet
-      const summary = [
-        { 'Metric': 'Report Type', 'Value': 'Overall Health Center Report' },
-        { 'Metric': 'Date Range', 'Value': `${dateRange.start} to ${dateRange.end}` },
-        { 'Metric': 'Total Appointments', 'Value': rptData.totals.appointments },
-        { 'Metric': 'Completed', 'Value': rptData.totals.completed },
-        { 'Metric': 'Completion Rate', 'Value': `${rptData.totals.completionRate}%` },
-        { 'Metric': 'Vaccinations', 'Value': rptData.totals.vaccinations },
-        { 'Metric': 'Health Records', 'Value': rptData.totals.healthRecords },
-      ];
-      const ws1 = XLSX.utils.json_to_sheet(summary);
-      ws1['!cols'] = [{ wch: 22 }, { wch: 28 }];
-      XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
-
-      // Appointments
-      const apptRows = rptData.appointments.map(a => ({
-        'Date': a.date, 'Time': a.time, 'Patient': a.name, 'Service': a.service,
-        'Status': a.status, 'Handled By': a.handled_by || '',
-      }));
-      if (!apptRows.length) apptRows.push({ 'Date': 'No records', 'Time': '', 'Patient': '', 'Service': '', 'Status': '', 'Handled By': '' });
-      const ws2 = XLSX.utils.json_to_sheet(apptRows);
-      ws2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 20 }, { wch: 16 }, { wch: 12 }, { wch: 16 }];
-      XLSX.utils.book_append_sheet(wb, ws2, 'Appointments');
-
-      // Vaccinations
-      const vaccRows = rptData.vaccinations.map(v => ({
-        'Date': v.date, 'Patient': v.patient, 'Vaccine': v.vaccine, 'Dose': v.dose,
-        'Status': v.status, 'Administered By': v.administered_by || '',
-      }));
-      if (!vaccRows.length) vaccRows.push({ 'Date': 'No records', 'Patient': '', 'Vaccine': '', 'Dose': '', 'Status': '', 'Administered By': '' });
-      const ws3 = XLSX.utils.json_to_sheet(vaccRows);
-      ws3['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 16 }, { wch: 8 }, { wch: 12 }, { wch: 16 }];
-      XLSX.utils.book_append_sheet(wb, ws3, 'Vaccinations');
-
-      // Health Records
-      const hrRows = rptData.healthRecords.map(r => ({
-        'Date': r.date, 'Patient': r.patient, 'Type': r.type, 'Diagnosis': r.diagnosis,
-        'Doctor': r.doctor, 'Status': r.status, 'Notes': r.notes || '',
-      }));
-      if (!hrRows.length) hrRows.push({ 'Date': 'No records', 'Patient': '', 'Type': '', 'Diagnosis': '', 'Doctor': '', 'Status': '', 'Notes': '' });
-      const ws4 = XLSX.utils.json_to_sheet(hrRows);
-      ws4['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 24 }];
-      XLSX.utils.book_append_sheet(wb, ws4, 'Health Records');
-
-      XLSX.writeFile(wb, `B-Health-Overall-Report-${today}.xlsx`);
-
-    } else if (reportModal === 'appointments') {
-      const summary = [
-        { 'Metric': 'Report Type', 'Value': 'Appointments Report' },
-        { 'Metric': 'Date Range', 'Value': `${dateRange.start} to ${dateRange.end}` },
-        { 'Metric': 'Status Filter', 'Value': rptStatusLabel },
-        { 'Metric': 'Appointments Listed', 'Value': rptAppts.length },
-        { 'Metric': 'Total Appointments', 'Value': rptData.totals.total },
-        { 'Metric': 'Completed', 'Value': rptData.totals.completed },
-        { 'Metric': 'Pending', 'Value': rptData.totals.pending },
-        { 'Metric': 'Approved', 'Value': rptData.totals.approved },
-        { 'Metric': 'Rejected', 'Value': rptData.totals.rejected },
-        { 'Metric': 'Completion Rate', 'Value': `${rptData.totals.rate}%` },
-      ];
-      const ws1 = XLSX.utils.json_to_sheet(summary);
-      ws1['!cols'] = [{ wch: 22 }, { wch: 28 }];
-      XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
-
-      const apptRows = rptAppts.map(a => ({
-        'Date': a.date, 'Time': a.time, 'Patient': a.name, 'Service': a.service,
-        'Status': a.status, 'Handled By': a.handled_by || '', 'Notes': a.notes || '',
-      }));
-      if (!apptRows.length) apptRows.push({ 'Date': 'No records', 'Time': '', 'Patient': '', 'Service': '', 'Status': '', 'Handled By': '', 'Notes': '' });
-      const ws2 = XLSX.utils.json_to_sheet(apptRows);
-      ws2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 20 }, { wch: 16 }, { wch: 12 }, { wch: 16 }, { wch: 24 }];
-      XLSX.utils.book_append_sheet(wb, ws2, 'Appointments');
-
-      const svcRows = rptData.serviceBreakdown.map(s => ({ 'Service': s.name, 'Count': s.value }));
-      svcRows.push({ 'Service': 'TOTAL', 'Count': svcRows.reduce((s, r) => s + r.Count, 0) });
-      const ws3 = XLSX.utils.json_to_sheet(svcRows);
-      ws3['!cols'] = [{ wch: 20 }, { wch: 10 }];
-      XLSX.utils.book_append_sheet(wb, ws3, 'Service Breakdown');
-
-      XLSX.writeFile(wb, `B-Health-Appointments${rptStatus === 'all' ? '' : `-${rptStatusLabel}`}-Report-${today}.xlsx`);
-
-    } else if (reportModal === 'health-records') {
-      const summary = [
-        { 'Metric': 'Report Type', 'Value': 'Health Records Report' },
-        { 'Metric': 'Date Range', 'Value': `${dateRange.start} to ${dateRange.end}` },
-        { 'Metric': 'Total Records', 'Value': rptData.totals.total },
-        { 'Metric': 'Closed', 'Value': rptData.totals.closed },
-        { 'Metric': 'Open/Active', 'Value': rptData.totals.open },
-      ];
-      const ws1 = XLSX.utils.json_to_sheet(summary);
-      ws1['!cols'] = [{ wch: 22 }, { wch: 28 }];
-      XLSX.utils.book_append_sheet(wb, ws1, 'Summary');
-
-      const hrRows = rptData.healthRecords.map(r => ({
-        'Date': r.date, 'Patient': r.patient, 'Type': r.type, 'Diagnosis': r.diagnosis,
-        'Doctor': r.doctor, 'Status': r.status, 'Prescription': r.prescription || '', 'Notes': r.notes || '',
-      }));
-      if (!hrRows.length) hrRows.push({ 'Date': 'No records', 'Patient': '', 'Type': '', 'Diagnosis': '', 'Doctor': '', 'Status': '', 'Prescription': '', 'Notes': '' });
-      const ws2 = XLSX.utils.json_to_sheet(hrRows);
-      ws2['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 14 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 20 }, { wch: 24 }];
-      XLSX.utils.book_append_sheet(wb, ws2, 'Health Records');
-
-      const typeRows = rptData.typeBreakdown.map(t => ({ 'Type': t.name, 'Count': t.value }));
-      typeRows.push({ 'Type': 'TOTAL', 'Count': typeRows.reduce((s, r) => s + r.Count, 0) });
-      const ws3 = XLSX.utils.json_to_sheet(typeRows);
-      ws3['!cols'] = [{ wch: 18 }, { wch: 10 }];
-      XLSX.utils.book_append_sheet(wb, ws3, 'Type Breakdown');
-
-      XLSX.writeFile(wb, `B-Health-HealthRecords-Report-${today}.xlsx`);
-    }
+  const reopenReport = (h) => {
+    setReportModal(h.kind);
+    setRptDateMode(h.mode);
+    setRptStartDate(new Date(`${h.start}T00:00:00`));
+    setRptEndDate(new Date(`${h.end}T00:00:00`));
+    setRptData(null);
+    resetReportFilters();
+    generateReport({ kind: h.kind, start: h.start, end: h.end, mode: h.mode, reportNo: h.reportNo });
   };
 
-  /* ── PDF export for separate reports (Overall / Appointments / Health Records) ── */
-  const exportReportPDF = () => {
-    if (!rptData || !reportModal) return;
-    const { dateRange } = rptData;
+  /* ── Row builders shared by screen, PDF and Excel ── */
+  const apptPdfRows = (list) => list.map((a) => [appointmentCode(a), a.date, a.time || '', ...nameColumns(a.name), a.service || '', statusLabel(a.status), a.handled_by || '']);
+  const hrPdfRows = (list) => list.map((r) => [healthRecordCode(r), r.date, ...nameColumns(r.patient), r.type || '', r.diagnosis || '', statusLabel(r.status)]);
+  const pctRows = (items) => items.map((s) => [s.label, String(s.value), `${s.pct}%`]);
+  const pctFoot = (items, label = 'TOTAL') => [label, String(items.reduce((s, i) => s + i.value, 0)), items.length ? '100%' : '0%'];
 
-    if (reportModal === 'overall') {
-      const sections = [
-        { type: 'info', text: `Period: ${dateRange.start} to ${dateRange.end}` },
-        { type: 'subtitle', text: 'Summary' },
-        { type: 'stats', items: [
-          { label: 'Appointments', value: rptData.totals.appointments },
-          { label: 'Completed', value: rptData.totals.completed },
-          { label: 'Rate', value: `${rptData.totals.completionRate}%` },
-          { label: 'Vaccinations', value: rptData.totals.vaccinations },
-          { label: 'Health Records', value: rptData.totals.healthRecords },
-        ]},
-        { type: 'subtitle', text: 'Appointments' },
-        { type: 'table', headers: ['Date', 'Time', 'Patient', 'Service', 'Status'],
-          rows: rptData.appointments.slice(0, 100).map(a => [a.date, a.time || '', a.name || '', a.service || '', a.status || '']) },
-        { type: 'subtitle', text: 'Health Records' },
-        { type: 'table', headers: ['Date', 'Patient', 'Type', 'Diagnosis', 'Doctor'],
-          rows: rptData.healthRecords.slice(0, 100).map(r => [r.date, r.patient || '', r.type || '', r.diagnosis || '', r.doctor || '']) },
-      ];
-      buildPDF('Overall Health Center Report', sections).save(`B-Health-Overall-Report-${new Date().toISOString().split('T')[0]}.pdf`);
-
-    } else if (reportModal === 'appointments') {
-      const sections = [
-        { type: 'info', text: `Period: ${dateRange.start} to ${dateRange.end}` },
-        { type: 'subtitle', text: 'Summary' },
-        { type: 'stats', items: [
-          { label: 'Total', value: rptData.totals.total },
-          { label: 'Completed', value: rptData.totals.completed },
-          { label: 'Pending', value: rptData.totals.pending },
-          { label: 'Approved', value: rptData.totals.approved },
-          { label: 'Rejected', value: rptData.totals.rejected },
-          { label: 'Rate', value: `${rptData.totals.rate}%` },
-        ]},
-        { type: 'subtitle', text: rptStatus === 'all' ? 'All Appointments' : `${rptStatusLabel} Appointments (${rptAppts.length})` },
-        { type: 'table', headers: ['Date', 'Time', 'Patient', 'Service', 'Status', 'Handled By'],
-          rows: rptAppts.slice(0, 200).map(a => [a.date, a.time || '', a.name || '', a.service || '', a.status || '', a.handled_by || '']) },
-      ];
-      if (rptData.serviceBreakdown?.length) {
-        sections.push({ type: 'subtitle', text: 'Service Breakdown' });
-        sections.push({ type: 'table', headers: ['Service', 'Count'],
-          rows: rptData.serviceBreakdown.map(s => [s.name, String(s.value)]) });
-      }
-      buildPDF('Appointments Report', sections).save(`B-Health-Appointments${rptStatus === 'all' ? '' : `-${rptStatusLabel}`}-Report-${new Date().toISOString().split('T')[0]}.pdf`);
-
-    } else if (reportModal === 'health-records') {
-      const sections = [
-        { type: 'info', text: `Period: ${dateRange.start} to ${dateRange.end}` },
-        { type: 'subtitle', text: 'Summary' },
-        { type: 'stats', items: [
-          { label: 'Total Records', value: rptData.totals.total },
-          { label: 'Closed', value: rptData.totals.closed },
-          { label: 'Open/Active', value: rptData.totals.open },
-        ]},
-        { type: 'subtitle', text: 'All Health Records' },
-        { type: 'table', headers: ['Date', 'Patient', 'Type', 'Diagnosis', 'Doctor', 'Status'],
-          rows: rptData.healthRecords.slice(0, 200).map(r => [r.date, r.patient || '', r.type || '', r.diagnosis || '', r.doctor || '', r.status || '']) },
-      ];
-      if (rptData.typeBreakdown?.length) {
-        sections.push({ type: 'subtitle', text: 'Type Breakdown' });
-        sections.push({ type: 'table', headers: ['Type', 'Count'],
-          rows: rptData.typeBreakdown.map(t => [t.name, String(t.value)]) });
-      }
-      buildPDF('Health Records Report', sections).save(`B-Health-HealthRecords-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+  const reportSections = (v) => {
+    const sections = [
+      { type: 'subtitle', text: 'I. Summary Report' },
+      { type: 'paragraph', text: v.summary },
+      { type: 'stats', items: v.kpis },
+    ];
+    let n = 1;
+    const roman = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
+    const sub = (text) => { n += 1; sections.push({ type: 'subtitle', text: `${roman[n - 1]}. ${text}` }); };
+    if (v.kind !== 'health-records') {
+      sub('Report Status – Appointments');
+      sections.push({ type: 'bars', items: v.apptStatus });
+      sections.push({ type: 'table', headers: ['Status', 'Count', 'Percentage'], rows: pctRows(v.apptStatus), foot: pctFoot(v.apptStatus) });
     }
+    if (v.kind !== 'appointments') {
+      sub('Report Status – Health Records');
+      sections.push({ type: 'bars', items: v.hrStatus });
+      sections.push({ type: 'table', headers: ['Status', 'Count', 'Percentage'], rows: pctRows(v.hrStatus), foot: pctFoot(v.hrStatus) });
+    }
+    if (v.kind !== 'health-records' && v.services.length) {
+      sub('Service Breakdown');
+      sections.push({ type: 'table', headers: ['Service', 'Count', 'Percentage'], rows: pctRows(v.services), foot: pctFoot(v.services) });
+    }
+    if (v.kind !== 'appointments' && v.types.length) {
+      sub('Record Type Breakdown');
+      sections.push({ type: 'table', headers: ['Record Type', 'Count', 'Percentage'], rows: pctRows(v.types), foot: pctFoot(v.types) });
+    }
+    if (v.kind !== 'health-records') {
+      sub(`List of Appointments (${v.appts.length})`);
+      sections.push({ type: 'table', headers: ['Appt. No.', 'Date', 'Time', ...NAME_HEADERS, 'Service', 'Status', 'Handled By'], rows: apptPdfRows(v.appts) });
+    }
+    if (v.kind !== 'appointments') {
+      sub(`List of Health Records (${v.hrs.length})`);
+      sections.push({ type: 'table', headers: ['Record No.', 'Date', ...NAME_HEADERS, 'Type', 'Diagnosis', 'Status'], rows: hrPdfRows(v.hrs) });
+    }
+    return sections;
+  };
+
+  /* ── Export separate report as Excel ── */
+  const exportReport = () => {
+    if (!rptView) return;
+    const v = rptView;
+    const wb = XLSX.utils.book_new();
+    const summary = [
+      { Item: 'Summary of Findings', Value: v.summary },
+      ...v.kpis.map((k) => ({ Item: k.label, Value: k.value })),
+    ];
+    addSheet(wb, 'Summary', v.meta, summary, [26, 90], 'Summary Report');
+    const statusRows = [
+      ...(v.kind !== 'health-records' ? v.apptStatus.map((s) => ({ Category: 'Appointments', Status: s.label, Count: s.value, Percentage: `${s.pct}%` })) : []),
+      ...(v.kind !== 'appointments' ? v.hrStatus.map((s) => ({ Category: 'Health Records', Status: s.label, Count: s.value, Percentage: `${s.pct}%` })) : []),
+    ];
+    addSheet(wb, 'Report Status', v.meta, statusRows, [18, 14, 10, 12]);
+    if (v.kind !== 'health-records') {
+      addSheet(wb, 'Appointments', v.meta, v.appts.map((a) => ({
+        'Appt. No.': appointmentCode(a), Date: a.date, Time: a.time || '', ...nameFields(a.name),
+        Service: a.service || '', Status: statusLabel(a.status), 'Handled By': a.handled_by || '', Notes: a.notes || '',
+      })), [16, 12, 9, 16, 16, 14, 20, 12, 16, 40]);
+      addSheet(wb, 'Service Breakdown', v.meta, v.services.map((s) => ({ Service: s.label, Count: s.value, Percentage: `${s.pct}%` })), [26, 10, 12]);
+    }
+    if (v.kind !== 'appointments') {
+      addSheet(wb, 'Health Records', v.meta, v.hrs.map((r) => ({
+        'Record No.': healthRecordCode(r), Date: r.date, ...nameFields(r.patient), Type: r.type || '',
+        Diagnosis: r.diagnosis || '', Doctor: r.doctor || '', Status: statusLabel(r.status),
+        Prescription: typeof r.prescription === 'string' ? r.prescription : '', Notes: r.notes || '',
+      })), [16, 12, 16, 16, 14, 14, 32, 16, 12, 20, 40]);
+      addSheet(wb, 'Type Breakdown', v.meta, v.types.map((t) => ({ 'Record Type': t.label, Count: t.value, Percentage: `${t.pct}%` })), [22, 10, 12]);
+    }
+    saveWorkbook(wb, v.meta);
+    updateHistory(v.meta.reportNo, { status: 'Exported (Excel)' });
+  };
+
+  /* ── PDF export / print for separate reports ── */
+  const exportReportPDF = async () => {
+    if (!rptView) return;
+    savePdf(await buildReportPdf(rptView.meta, reportSections(rptView)), rptView.meta);
+    updateHistory(rptView.meta.reportNo, { status: 'Exported (PDF)' });
+  };
+  const printReport = async () => {
+    if (!rptView) return;
+    const v = rptView;
+    await printPdf(v.meta, () => buildReportPdf(v.meta, reportSections(v)));
+    updateHistory(v.meta.reportNo, { status: 'Printed' });
   };
 
   /* ── PDF export for per-service report ── */
-  const exportSvcReportPDF = () => {
+  const exportSvcReportPDF = async () => {
     if (!svcReportData || !svcModal) return;
     const { totals: t, dateRange } = svcReportData;
+    const meta = quickMeta(`${cap(svcDateMode)} ${svcModal.name} Service Report`, dateRange.start, dateRange.end, `Service: ${svcModal.name}`);
     const sections = [
-      { type: 'info', text: `Service: ${svcModal.name} | Period: ${dateRange.start} to ${dateRange.end}` },
       { type: 'subtitle', text: 'Summary' },
       { type: 'stats', items: [
         { label: 'Total', value: t.total },
@@ -871,16 +896,15 @@ const Reports = () => {
         { label: 'Rate', value: `${t.rate}%` },
       ]},
       { type: 'subtitle', text: 'Appointments' },
-      { type: 'table', headers: ['Date', 'Time', 'Patient', 'Status', 'Handled By'],
-        rows: svcReportData.appointments.slice(0, 200).map(a => [a.date, a.time || '', a.name || '', a.status || '', a.handled_by || '']) },
+      { type: 'table', headers: ['Date', 'Time', ...NAME_HEADERS, 'Status', 'Handled By'],
+        rows: svcReportData.appointments.slice(0, 200).map(a => [a.date, a.time || '', ...nameColumns(a.name), statusLabel(a.status), a.handled_by || '']) },
     ];
     if (svcReportData.vaccinations.length) {
       sections.push({ type: 'subtitle', text: 'Vaccinations' });
-      sections.push({ type: 'table', headers: ['Date', 'Patient', 'Vaccine', 'Dose', 'Status'],
-        rows: svcReportData.vaccinations.map(v => [v.date, v.patient || '', v.vaccine || '', v.dose || '', v.status || '']) });
+      sections.push({ type: 'table', headers: ['Date', ...NAME_HEADERS, 'Vaccine', 'Dose', 'Status'],
+        rows: svcReportData.vaccinations.map(v => [v.date, ...nameColumns(v.patient), v.vaccine || '', v.dose || '', v.status || '']) });
     }
-    const name = svcModal.name.replace(/[^a-zA-Z0-9]/g, '');
-    buildPDF(`${svcModal.name} Report`, sections).save(`B-Health-${name}-Report-${new Date().toISOString().split('T')[0]}.pdf`);
+    savePdf(await buildReportPdf(meta, sections), meta);
   };
 
   const generateSvcReport = async () => {
@@ -960,22 +984,22 @@ const Reports = () => {
 
     // Sheet 2: Appointments
     const apptRows = appts.map(a => ({
-      'Date': a.date || '', 'Time': a.time || '', 'Patient': a.name || '',
+      'Date': a.date || '', 'Time': a.time || '', ...nameFields(a.name),
       'Status': a.status || '', 'Handled By': a.handled_by || '', 'Notes': a.notes || '',
     }));
-    if (apptRows.length === 0) apptRows.push({ 'Date': 'No records', 'Time': '', 'Patient': '', 'Status': '', 'Handled By': '', 'Notes': '' });
+    if (apptRows.length === 0) apptRows.push({ 'Date': 'No records', 'Time': '', 'Last Name': '', 'First Name': '', 'Middle Name': '', 'Status': '', 'Handled By': '', 'Notes': '' });
     const ws2 = XLSX.utils.json_to_sheet(apptRows);
-    ws2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 20 }, { wch: 12 }, { wch: 16 }, { wch: 24 }];
+    ws2['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 16 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(wb, ws2, 'Appointments');
 
     // Sheet 3: Vaccinations
     const vaccRows = vaccs.map(v => ({
-      'Date': v.date || '', 'Patient': v.patient || '', 'Vaccine': v.vaccine || '',
+      'Date': v.date || '', ...nameFields(v.patient), 'Vaccine': v.vaccine || '',
       'Dose': v.dose || '', 'Status': v.status || '', 'Administered By': v.administered_by || '',
     }));
-    if (vaccRows.length === 0) vaccRows.push({ 'Date': 'No records', 'Patient': '', 'Vaccine': '', 'Dose': '', 'Status': '', 'Administered By': '' });
+    if (vaccRows.length === 0) vaccRows.push({ 'Date': 'No records', 'Last Name': '', 'First Name': '', 'Middle Name': '', 'Vaccine': '', 'Dose': '', 'Status': '', 'Administered By': '' });
     const ws3 = XLSX.utils.json_to_sheet(vaccRows);
-    ws3['!cols'] = [{ wch: 12 }, { wch: 20 }, { wch: 16 }, { wch: 8 }, { wch: 12 }, { wch: 16 }];
+    ws3['!cols'] = [{ wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 8 }, { wch: 12 }, { wch: 16 }];
     XLSX.utils.book_append_sheet(wb, ws3, 'Vaccinations');
 
     XLSX.writeFile(wb, `B-Health-${svcName}-Report-${today}.xlsx`);
@@ -1034,35 +1058,6 @@ const Reports = () => {
       : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
   const dateLabel = `${fmtDate(startDate, dateMode)} - ${fmtDate(endDate, dateMode)}`;
-
-  /* ── Generated reports list (from real data) ── */
-  const recentReports = useMemo(() => {
-    const now = new Date();
-    const reports = [];
-    const appts = filteredAppointments;
-    for (let i = 0; i < 4; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const monthName = d.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-      const monthAppts = appts.filter(a => {
-        if (!a.date) return false;
-        const ad = new Date(a.date);
-        return ad.getMonth() === d.getMonth() && ad.getFullYear() === d.getFullYear();
-      });
-      if (monthAppts.length > 0 || i === 0) {
-        reports.push({
-          id: i + 1,
-          name: selectedService === 'all'
-            ? `Monthly Summary - ${monthName}`
-            : `${selectedService} - ${monthName}`,
-          type: 'Monthly',
-          date: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`,
-          records: monthAppts.length,
-          status: 'Ready',
-        });
-      }
-    }
-    return reports;
-  }, [filteredAppointments, selectedService]);
 
   return (
     <div className="p-4" style={{ backgroundColor: '#f8fafc' }} ref={printRef}>
@@ -1580,65 +1575,87 @@ const Reports = () => {
         </Card.Body>
       </Card>
 
-      {/* ── Saved Reports ── */}
+      {/* ── Report History ── */}
       <Card className="border-0 rounded-4 bh-fade-up"
         style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)', animationDelay: '0.2s' }}>
         <Card.Body className="p-0">
-          <div className="p-4 pb-3 d-flex justify-content-between align-items-center">
-            <div>
-              <div className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>Saved Reports</div>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>{recentReports.length} reports available for download</div>
+          <div className="p-4 pb-3 d-flex flex-wrap gap-2 justify-content-between align-items-center">
+            <div className="d-flex align-items-center gap-2">
+              <History size={18} color="#059669" />
+              <div>
+                <div className="fw-bold" style={{ fontSize: 15, color: '#111827' }}>Report History</div>
+                <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                  {history.length} generated report{history.length === 1 ? '' : 's'} &bull; status updates when a report is printed or exported
+                </div>
+              </div>
+            </div>
+            <div className="d-flex flex-wrap gap-1">
+              {Object.entries(HISTORY_STATUS).map(([label, c]) => (
+                <span key={label} style={{ fontSize: 10, fontWeight: 600, padding: '3px 8px', borderRadius: 999, background: c.bg, color: c.color }}>
+                  {label}: {history.filter((h) => h.status === label).length}
+                </span>
+              ))}
             </div>
           </div>
           <div className="table-responsive">
             <Table hover className="mb-0 align-middle">
               <thead style={{ backgroundColor: '#f9fafb' }}>
                 <tr style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <th className="px-4 py-3 border-0">Report Name</th>
-                  <th className="py-3 border-0">Type</th>
-                  <th className="py-3 border-0">Date</th>
+                  <th className="px-4 py-3 border-0">Report</th>
+                  <th className="py-3 border-0">Period Covered</th>
                   <th className="py-3 border-0">Records</th>
+                  <th className="py-3 border-0">Generated</th>
                   <th className="py-3 border-0">Status</th>
                   <th className="py-3 text-end pe-4 border-0">Action</th>
                 </tr>
               </thead>
               <tbody style={{ fontSize: 13 }}>
-                {recentReports.map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-4 py-3">
-                      <div className="d-flex align-items-center gap-3">
-                        <div className="d-flex align-items-center justify-content-center rounded-3"
-                          style={{
-                            width: 36, height: 36, flexShrink: 0,
-                            background: 'linear-gradient(135deg, #dbeafe, #bfdbfe)', color: '#1d4ed8',
-                          }}>
-                          <FileText size={16} />
+                {history.length === 0 && (
+                  <tr><td colSpan={6} className="text-center py-4" style={{ color: '#9ca3af', fontSize: 12 }}>
+                    No reports generated yet. Open the Overall, Appointments or Health Records report above and click Generate Report.
+                  </td></tr>
+                )}
+                {history.map((h) => {
+                  const st = HISTORY_STATUS[h.status] || HISTORY_STATUS.Generated;
+                  return (
+                    <tr key={h.reportNo}>
+                      <td className="px-4 py-3">
+                        <div className="d-flex align-items-center gap-3">
+                          <div className="d-flex align-items-center justify-content-center rounded-3"
+                            style={{ width: 36, height: 36, flexShrink: 0, background: 'linear-gradient(135deg, #dcfce7, #bbf7d0)', color: '#047857' }}>
+                            <FileText size={16} />
+                          </div>
+                          <div>
+                            <div className="fw-semibold" style={{ color: '#111827' }}>{h.title}</div>
+                            <div style={{ fontSize: 11, color: '#047857', fontWeight: 700, fontFamily: 'ui-monospace, Consolas, monospace' }}>{h.reportNo}</div>
+                          </div>
                         </div>
-                        <span className="fw-semibold" style={{ color: '#111827' }}>{r.name}</span>
-                      </div>
-                    </td>
-                    <td className="py-3">
-                      <Badge pill style={{ fontWeight: 600, fontSize: 11, padding: '4px 10px', background: '#eff6ff', color: '#1d4ed8' }}>
-                        {r.type}
-                      </Badge>
-                    </td>
-                    <td className="py-3" style={{ color: '#6b7280', fontSize: 12 }}>{r.date}</td>
-                    <td className="py-3" style={{ color: '#374151', fontSize: 12, fontWeight: 600 }}>{r.records}</td>
-                    <td className="py-3">
-                      <span className="d-flex align-items-center gap-1" style={{ fontSize: 12, color: '#16a34a', fontWeight: 500 }}>
-                        <CheckCircle2 size={13} /> {r.status}
-                      </span>
-                    </td>
-                    <td className="py-3 text-end pe-4">
-                      <Button size="sm" variant="light" className="border-0 d-inline-flex align-items-center gap-1 rounded-3"
-                        style={{ background: '#f0fdf4', padding: '6px 12px' }}
-                        onClick={() => downloadCSV(`${r.name}.csv`, ['Report', 'Type', 'Date', 'Records'], [[r.name, r.type, r.date, r.records]])}>
-                        <Download size={13} color="#16a34a" />
-                        <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>Download</span>
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3" style={{ color: '#6b7280', fontSize: 12 }}>{periodText(h.start, h.end)}</td>
+                      <td className="py-3" style={{ color: '#374151', fontSize: 12, fontWeight: 600 }}>{h.records}</td>
+                      <td className="py-3" style={{ color: '#6b7280', fontSize: 12 }}>
+                        {dateTimeText(h.generatedAt)}
+                        <div style={{ fontSize: 11, color: '#94a3b8' }}>by {h.preparedBy}</div>
+                      </td>
+                      <td className="py-3">
+                        <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 999, background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>
+                          {h.status}
+                        </span>
+                      </td>
+                      <td className="py-3 text-end pe-4" style={{ whiteSpace: 'nowrap' }}>
+                        <Button size="sm" variant="light" className="border-0 d-inline-flex align-items-center gap-1 rounded-3 me-1"
+                          style={{ background: '#f0fdf4', padding: '6px 12px' }} onClick={() => reopenReport(h)}>
+                          <Eye size={13} color="#16a34a" />
+                          <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>Open</span>
+                        </Button>
+                        <Button size="sm" variant="light" className="border-0 rounded-3 p-1 px-2" title="Remove from history"
+                          onClick={() => updateHistory(h.reportNo, null)}>
+                          <X size={14} color="#dc2626" />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </Table>
           </div>
@@ -1831,7 +1848,7 @@ const Reports = () => {
                   <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
                     <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
                       <th className="px-3 py-2">Date</th>
-                      <th className="py-2">Patient</th>
+                      <th className="py-2">Last Name</th><th className="py-2">First Name</th><th className="py-2">Middle Name</th>
                       <th className="py-2">Status</th>
                       <th className="py-2 d-none d-sm-table-cell">Handled By</th>
                     </tr>
@@ -1840,7 +1857,7 @@ const Reports = () => {
                     {svcReportData.appointments.slice(0, 20).map((a) => (
                       <tr key={a.id} onClick={() => setViewAppt(a)} style={{ cursor: 'pointer' }} title="View appointment details">
                         <td className="px-3 py-2" style={{ color: '#6b7280' }}>{a.date}</td>
-                        <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{a.name}</td>
+                        <td className="py-2" style={{ color: '#111827', fontWeight: 600 }}>{nameColumns(a.name)[0]}</td><td className="py-2" style={{ color: '#111827' }}>{nameColumns(a.name)[1]}</td><td className="py-2" style={{ color: '#6b7280' }}>{nameColumns(a.name)[2]}</td>
                         <td className="py-2"><StatusBadge status={a.status} /></td>
                         <td className="py-2 d-none d-sm-table-cell" style={{ color: '#6b7280' }}>{a.handled_by || '-'}</td>
                       </tr>
@@ -1900,7 +1917,7 @@ const Reports = () => {
                   : reportModal === 'appointments' ? 'Appointments Report'
                   : 'Health Records Report'}
               </Modal.Title>
-              <div style={{ fontSize: 11, color: '#9ca3af' }}>Select date range and generate report</div>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>{rptView ? `${rptView.meta.reportNo} · ${rptView.meta.period}` : 'Select date range and generate report'}</div>
             </div>
           </div>
         </Modal.Header>
@@ -1947,7 +1964,7 @@ const Reports = () => {
                 </div>
               </Col>
               <Col xs={12} md="auto">
-                <button onClick={generateReport}
+                <button onClick={() => generateReport()}
                   disabled={!rptStartDate || !rptEndDate || rptLoading}
                   className="border-0 rounded-3 px-4 py-2 d-flex align-items-center gap-2"
                   style={{
@@ -1962,256 +1979,246 @@ const Reports = () => {
           </div>
 
           {/* Report Results */}
-          {rptData && (
-            <>
-              <div className="p-3 rounded-3 mb-3" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                <div className="d-flex align-items-center gap-2" style={{ fontSize: 12 }}>
-                  <CheckCircle2 size={15} color="#16a34a" />
-                  <span style={{ color: '#166534', fontWeight: 500 }}>
-                    Report generated for <strong>{rptData.dateRange.start}</strong> to <strong>{rptData.dateRange.end}</strong>
-                  </span>
-                </div>
-              </div>
-
-              {/* Overall Report Stats */}
-              {reportModal === 'overall' && (
-                <>
-                  <Row className="g-2 mb-3">
+          {rptLoading && !rptData && (
+            <div className="d-flex align-items-center justify-content-center gap-2 py-5" style={{ color: '#64748b', fontSize: 13 }}>
+              <Spinner size="sm" animation="border" /> Generating report...
+            </div>
+          )}
+          {rptView && (() => {
+            const v = rptView;
+            const totalRows = v.kind === 'appointments' ? rptData.appointments.length
+              : v.kind === 'health-records' ? rptData.healthRecords.length
+                : rptData.appointments.length + rptData.healthRecords.length;
+            const shownRows = v.kind === 'appointments' ? v.appts.length
+              : v.kind === 'health-records' ? v.hrs.length : v.appts.length + v.hrs.length;
+            const statusOptions = v.kind === 'appointments' ? APPT_STATUSES : HR_STATUSES;
+            const categoryOptions = [...new Set((v.kind === 'appointments' ? rptData.appointments.map((a) => a.service) : rptData.healthRecords.map((r) => r.type)).filter(Boolean))].sort();
+            const filtersActive = rptSearch.trim() || rptStatus !== 'all' || rptCategory !== 'all' || rptSort !== 'date';
+            const trendBars = v.kind === 'appointments'
+              ? [['appointments', 'Appointments', '#3b82f6'], ['completed', 'Completed', '#16a34a']]
+              : v.kind === 'health-records' ? [['records', 'Health Records', '#f59e0b']]
+                : [['appointments', 'Appointments', '#3b82f6'], ['completed', 'Completed', '#16a34a'], ['records', 'Health Records', '#f59e0b']];
+            let sec = 0;
+            const num = () => ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'][sec++];
+            return (
+              <>
+                {/* ── Official report heading ── */}
+                <div className="rounded-3 mb-3" style={{ background: '#fff', border: '1px solid #e2e8f0' }}>
+                  <div className="d-flex align-items-center gap-3 px-3 py-3" style={{ borderBottom: '3px solid #059669' }}>
+                    <div className="d-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
+                      style={{ width: 46, height: 46, background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+                      <Activity size={24} color="#fff" />
+                    </div>
+                    <div className="flex-grow-1 text-center">
+                      <div style={{ fontSize: 11, color: '#475569' }}>{ORG.country}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', letterSpacing: '0.02em' }}>{ORG.office}</div>
+                      <div style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>{ORG.system}</div>
+                    </div>
+                    <div style={{ width: 46 }} className="d-none d-md-block" />
+                  </div>
+                  <div className="text-center px-3 pt-3">
+                    <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.03em' }}>{v.meta.title}</div>
+                    <div style={{ fontSize: 12, color: '#475569' }}>Period Covered: <strong>{v.meta.period}</strong></div>
+                  </div>
+                  <Row className="g-0 m-3 rounded-2 overflow-hidden" style={{ border: '1px solid #e2e8f0', fontSize: 11 }}>
                     {[
-                      { label: 'Appointments', value: rptData.totals.appointments, color: '#1d4ed8' },
-                      { label: 'Completed', value: rptData.totals.completed, color: '#16a34a' },
-                      { label: 'Completion Rate', value: `${rptData.totals.completionRate}%`, color: '#be185d' },
-                      { label: 'Vaccinations', value: rptData.totals.vaccinations, color: '#b45309' },
-                      { label: 'Health Records', value: rptData.totals.healthRecords, color: '#7c3aed' },
-                    ].map((s) => (
-                      <Col key={s.label} xs={6} md={Math.floor(12 / 5)}>
-                        <div className="text-center p-2 rounded-3" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                          <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{s.value}</div>
-                          <div style={{ fontSize: 10, color: '#6b7280' }}>{s.label}</div>
-                        </div>
+                      ['Report No.', v.meta.reportNo],
+                      ['Date Generated', dateTimeText(v.meta.generatedAt)],
+                      ['Prepared by', v.meta.preparedBy],
+                      ['Filters Applied', v.meta.filters],
+                    ].map(([label, value]) => (
+                      <Col key={label} xs={12} md={6} className="d-flex" style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <div className="px-2 py-1 fw-bold flex-shrink-0" style={{ width: 110, background: '#f8fafc', color: '#475569' }}>{label}</div>
+                        <div className="px-2 py-1" style={{ color: '#0f172a' }}>{value}</div>
                       </Col>
                     ))}
+                  </Row>
+                </div>
+
+                {/* ── Filtering ── */}
+                <div className="p-3 rounded-3 mb-3" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                    <div className="d-flex align-items-center gap-2" style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>
+                      <Filter size={15} /> Filter Report
+                      <span style={{ fontSize: 11, fontWeight: 500, color: '#64748b' }}>Showing {shownRows} of {totalRows} records</span>
+                    </div>
+                    {filtersActive && (
+                      <button onClick={resetReportFilters} className="border-0 bg-transparent d-flex align-items-center gap-1 p-0"
+                        style={{ fontSize: 11, color: '#dc2626', fontWeight: 600 }}>
+                        <X size={13} /> Clear filters
+                      </button>
+                    )}
+                  </div>
+                  <Row className="g-2">
+                    <Col xs={12} md={v.kind === 'overall' ? 8 : 5}>
+                      <div className="position-relative">
+                        <Search size={14} color="#94a3b8" className="position-absolute" style={{ left: 10, top: 9 }} />
+                        <Form.Control size="sm" value={rptSearch} onChange={(e) => setRptSearch(e.target.value)}
+                          placeholder={`Search patient name or ${v.kind === 'health-records' ? 'HR' : v.kind === 'appointments' ? 'APT' : 'APT / HR'} no.`}
+                          style={{ fontSize: 12, paddingLeft: 30, borderRadius: 8 }} />
+                      </div>
+                    </Col>
+                    {v.kind !== 'overall' && (
+                      <>
+                        <Col xs={6} md={2}>
+                          <Form.Select size="sm" value={rptStatus} onChange={(e) => setRptStatus(e.target.value)} style={{ fontSize: 12, borderRadius: 8 }}>
+                            <option value="all">All Statuses</option>
+                            {statusOptions.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+                          </Form.Select>
+                        </Col>
+                        <Col xs={6} md={2}>
+                          <Form.Select size="sm" value={rptCategory} onChange={(e) => setRptCategory(e.target.value)} style={{ fontSize: 12, borderRadius: 8 }}>
+                            <option value="all">{v.kind === 'appointments' ? 'All Services' : 'All Types'}</option>
+                            {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </Form.Select>
+                        </Col>
+                      </>
+                    )}
+                    <Col xs={12} md={v.kind === 'overall' ? 4 : 3}>
+                      <Form.Select size="sm" value={rptSort} onChange={(e) => setRptSort(e.target.value)} style={{ fontSize: 12, borderRadius: 8 }}>
+                        <option value="date">Sort by Date</option>
+                        <option value="name">Sort by Patient Name (A–Z)</option>
+                      </Form.Select>
+                    </Col>
+                  </Row>
+                </div>
+
+                {/* ── Summary Report ── */}
+                <Panel>
+                  <SectionTitle num={num()}>Summary Report</SectionTitle>
+                  <p className="mb-0" style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.6, textAlign: 'justify' }}>{v.summary}</p>
+                </Panel>
+
+                {/* ── Report Dashboard ── */}
+                <Panel>
+                  <SectionTitle num={num()}>Report Dashboard</SectionTitle>
+                  <KpiCards items={v.kpis} />
+                  <Row className="g-3 mb-2">
+                    {v.kind !== 'health-records' && (
+                      <Col xs={12} md={v.kind === 'overall' ? 6 : 5}><StatusDonut title="Appointment Status" items={v.apptStatus} /></Col>
+                    )}
+                    {v.kind !== 'appointments' && (
+                      <Col xs={12} md={v.kind === 'overall' ? 6 : 5}><StatusDonut title="Health Record Status" items={v.hrStatus} /></Col>
+                    )}
+                    <Col xs={12} md={v.kind === 'overall' ? 12 : 7}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>
+                        {rptData.mode === 'weekly' ? 'Weekly' : 'Monthly'} Trend
+                      </div>
+                      {v.trend.length ? (
+                        <ResponsiveContainer width="100%" height={150}>
+                          <BarChart data={v.trend} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+                            <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                            <YAxis allowDecimals={false} tick={{ fontSize: 9, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                            <Tooltip content={<ChartTooltip />} />
+                            {trendBars.map(([key, name, color]) => (
+                              <Bar key={key} dataKey={key} name={name} fill={color} radius={[4, 4, 0, 0]} maxBarSize={22} />
+                            ))}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="d-flex align-items-center justify-content-center" style={{ height: 150, fontSize: 12, color: '#9ca3af' }}>No data for the selected filters.</div>
+                      )}
+                    </Col>
                   </Row>
                   <Row className="g-3">
-                    <Col xs={12} md={6}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Recent Appointments</div>
-                      <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
-                        <Table hover size="sm" className="mb-0 align-middle">
-                          <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
-                            <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
-                              <th className="px-3 py-2">Date</th><th className="py-2">Patient</th><th className="py-2">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody style={{ fontSize: 12 }}>
-                            {rptData.appointments.slice(0, 15).map(a => (
-                              <tr key={a.id} onClick={() => setViewAppt(a)} style={{ cursor: 'pointer' }} title="View appointment details">
-                                <td className="px-3 py-2" style={{ color: '#6b7280' }}>{a.date}</td>
-                                <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{a.name}</td>
-                                <td className="py-2"><StatusBadge status={a.status} /></td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </Table>
-                      </div>
-                    </Col>
-                    <Col xs={12} md={6}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Recent Health Records</div>
-                      <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
-                        <Table hover size="sm" className="mb-0 align-middle">
-                          <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
-                            <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
-                              <th className="px-3 py-2">Date</th><th className="py-2">Patient</th><th className="py-2">Type</th>
-                            </tr>
-                          </thead>
-                          <tbody style={{ fontSize: 12 }}>
-                            {rptData.healthRecords.slice(0, 15).map(r => (
-                              <tr key={r.id} onClick={() => openHealthRecord(r.id)} style={{ cursor: 'pointer' }} title="Open health record">
-                                <td className="px-3 py-2" style={{ color: '#6b7280' }}>{r.date}</td>
-                                <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{r.patient}</td>
-                                <td className="py-2" style={{ color: '#6b7280' }}>{r.type}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </Table>
-                      </div>
-                    </Col>
-                  </Row>
-                </>
-              )}
-
-              {/* Appointments Report Stats */}
-              {reportModal === 'appointments' && (
-                <>
-                  <Row className="g-2 mb-3">
-                    {[
-                      { label: 'Total', value: rptData.totals.total, color: '#1d4ed8' },
-                      { label: 'Completed', value: rptData.totals.completed, color: '#16a34a' },
-                      { label: 'Pending', value: rptData.totals.pending, color: '#b45309' },
-                      { label: 'Approved', value: rptData.totals.approved, color: '#7c3aed' },
-                      { label: 'Rejected', value: rptData.totals.rejected, color: '#b91c1c' },
-                      { label: 'Rate', value: `${rptData.totals.rate}%`, color: '#be185d' },
-                    ].map((s) => (
-                      <Col key={s.label} xs={6} md={2}>
-                        <div className="text-center p-2 rounded-3" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                          <div style={{ fontSize: 20, fontWeight: 700, color: s.color }}>{s.value}</div>
-                          <div style={{ fontSize: 10, color: '#6b7280' }}>{s.label}</div>
-                        </div>
+                    {v.kind !== 'health-records' && (
+                      <Col xs={12} md={v.kind === 'overall' ? 6 : 12}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>Service Breakdown</div>
+                        <PercentTable firstCol="Service" items={v.services} />
                       </Col>
-                    ))}
-                  </Row>
-                  {rptData.chart?.length > 0 && (
-                    <div className="mb-3">
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
-                        {rptDateMode === 'weekly' ? 'Weekly' : 'Monthly'} Trend
-                      </div>
-                      <ResponsiveContainer width="100%" height={180}>
-                        <BarChart data={rptData.chart} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                          <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                          <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                          <Tooltip content={<ChartTooltip />} />
-                          <Bar dataKey="total" name="Total" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
-                          <Bar dataKey="completed" name="Completed" fill="#16a34a" radius={[4, 4, 0, 0]} barSize={20} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                  {rptData.serviceBreakdown?.length > 0 && (
-                    <div className="mb-3">
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Service Breakdown</div>
-                      <div className="d-flex flex-wrap gap-2">
-                        {rptData.serviceBreakdown.map(s => (
-                          <span key={s.name} className="d-flex align-items-center gap-1 px-2 py-1 rounded-2"
-                            style={{ fontSize: 11, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                            <span style={{ fontWeight: 600, color: '#374151' }}>{s.name}</span>
-                            <Badge pill style={{ fontSize: 10, background: '#3b82f6', color: '#fff' }}>{s.value}</Badge>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
-                      {rptStatus === 'all' ? 'All Appointments' : `${rptStatusLabel} Appointments`} ({rptAppts.length})
-                    </div>
-                    <div className="d-flex align-items-center gap-2">
-                      <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 600 }}>Status</span>
-                      <Form.Select size="sm" value={rptStatus} onChange={(e) => setRptStatus(e.target.value)}
-                        style={{ fontSize: 12, minWidth: 150, borderRadius: 8 }}>
-                        <option value="all">All ({rptData.appointments.length})</option>
-                        {['pending', 'approved', 'completed', 'rejected', 'cancelled'].map((s) => (
-                          <option key={s} value={s}>
-                            {s.charAt(0).toUpperCase() + s.slice(1)} ({rptData.appointments.filter((a) => a.status === s).length})
-                          </option>
-                        ))}
-                      </Form.Select>
-                    </div>
-                  </div>
-                  <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
-                    <Table hover size="sm" className="mb-0 align-middle">
-                      <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
-                        <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
-                          <th className="px-3 py-2">Date</th><th className="py-2">Patient</th><th className="py-2">Service</th><th className="py-2">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody style={{ fontSize: 12 }}>
-                        {rptAppts.map(a => (
-                          <tr key={a.id} onClick={() => setViewAppt(a)} style={{ cursor: 'pointer' }} title="View appointment details">
-                            <td className="px-3 py-2" style={{ color: '#6b7280' }}>{a.date}</td>
-                            <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{a.name}</td>
-                            <td className="py-2" style={{ color: '#6b7280' }}>{a.service}</td>
-                            <td className="py-2"><StatusBadge status={a.status} /></td>
-                          </tr>
-                        ))}
-                        {rptAppts.length === 0 && (
-                          <tr><td colSpan={4} className="text-center py-3" style={{ color: '#9ca3af' }}>No {rptStatusLabel.toLowerCase()} appointments in this period.</td></tr>
-                        )}
-                      </tbody>
-                    </Table>
-                  </div>
-                </>
-              )}
-
-              {/* Health Records Report Stats */}
-              {reportModal === 'health-records' && (
-                <>
-                  <Row className="g-2 mb-3">
-                    {[
-                      { label: 'Total Records', value: rptData.totals.total, color: '#b45309' },
-                      { label: 'Closed', value: rptData.totals.closed, color: '#16a34a' },
-                      { label: 'Open/Active', value: rptData.totals.open, color: '#3b82f6' },
-                    ].map((s) => (
-                      <Col key={s.label} xs={12} md={4}>
-                        <div className="text-center p-3 rounded-3" style={{ background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                          <div style={{ fontSize: 24, fontWeight: 700, color: s.color }}>{s.value}</div>
-                          <div style={{ fontSize: 11, color: '#6b7280' }}>{s.label}</div>
-                        </div>
+                    )}
+                    {v.kind !== 'appointments' && (
+                      <Col xs={12} md={v.kind === 'overall' ? 6 : 12}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>Record Type Breakdown</div>
+                        <PercentTable firstCol="Record Type" items={v.types} />
                       </Col>
-                    ))}
+                    )}
                   </Row>
-                  {rptData.chart?.length > 0 && (
-                    <div className="mb-3">
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
-                        {rptDateMode === 'weekly' ? 'Weekly' : 'Monthly'} Records Trend
-                      </div>
-                      <ResponsiveContainer width="100%" height={160}>
-                        <AreaChart data={rptData.chart} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
-                          <defs>
-                            <linearGradient id="gHR" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                              <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                          <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                          <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                          <Tooltip content={<ChartTooltip />} />
-                          <Area type="monotone" dataKey="records" name="Records" stroke="#f59e0b" strokeWidth={2.5} fill="url(#gHR)" dot={{ r: 3, fill: '#f59e0b' }} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                  {rptData.typeBreakdown?.length > 0 && (
-                    <div className="mb-3">
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>Record Types</div>
-                      <div className="d-flex flex-wrap gap-2">
-                        {rptData.typeBreakdown.map(t => (
-                          <span key={t.name} className="d-flex align-items-center gap-1 px-2 py-1 rounded-2"
-                            style={{ fontSize: 11, background: '#fef3c7', border: '1px solid #fde68a' }}>
-                            <span style={{ fontWeight: 600, color: '#92400e' }}>{t.name}</span>
-                            <Badge pill style={{ fontSize: 10, background: '#b45309', color: '#fff' }}>{t.value}</Badge>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
-                    All Health Records ({rptData.healthRecords.length})
-                  </div>
-                  <div className="table-responsive" style={{ maxHeight: 200, overflowY: 'auto' }}>
-                    <Table hover size="sm" className="mb-0 align-middle">
-                      <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
-                        <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
-                          <th className="px-3 py-2">Date</th><th className="py-2">Patient</th><th className="py-2">Type</th><th className="py-2">Diagnosis</th><th className="py-2">Doctor</th>
-                        </tr>
-                      </thead>
-                      <tbody style={{ fontSize: 12 }}>
-                        {rptData.healthRecords.slice(0, 20).map(r => (
-                          <tr key={r.id} onClick={() => openHealthRecord(r.id)} style={{ cursor: 'pointer' }} title="Open health record">
-                            <td className="px-3 py-2" style={{ color: '#6b7280' }}>{r.date}</td>
-                            <td className="py-2" style={{ color: '#111827', fontWeight: 500 }}>{r.patient}</td>
-                            <td className="py-2" style={{ color: '#6b7280' }}>{r.type}</td>
-                            <td className="py-2" style={{ color: '#374151', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.diagnosis}</td>
-                            <td className="py-2" style={{ color: '#6b7280' }}>{r.doctor}</td>
+                </Panel>
+
+                {/* ── Report Status ── */}
+                <Panel>
+                  <SectionTitle num={num()}>Report Status</SectionTitle>
+                  <Row className="g-3">
+                    {v.kind !== 'health-records' && (
+                      <Col xs={12} md={v.kind === 'overall' ? 6 : 12}>
+                        {v.kind === 'overall' && <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>Appointments</div>}
+                        <PercentTable firstCol="Appointment Status" items={v.apptStatus} />
+                      </Col>
+                    )}
+                    {v.kind !== 'appointments' && (
+                      <Col xs={12} md={v.kind === 'overall' ? 6 : 12}>
+                        {v.kind === 'overall' && <div style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 4 }}>Health Records</div>}
+                        <PercentTable firstCol="Health Record Status" items={v.hrStatus} />
+                      </Col>
+                    )}
+                  </Row>
+                </Panel>
+
+                {/* ── Lists ── */}
+                {v.kind !== 'health-records' && (
+                  <Panel>
+                    <SectionTitle num={num()} right={<span style={{ fontSize: 11, color: '#94a3b8' }}>Click a row to view details</span>}>
+                      List of Appointments ({v.appts.length})
+                    </SectionTitle>
+                    <div className="table-responsive" style={{ maxHeight: 280, overflowY: 'auto' }}>
+                      <Table hover size="sm" className="mb-0 align-middle">
+                        <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
+                          <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
+                            <th className="px-3 py-2">Appt. No.</th><th className="py-2">Date</th><th className="py-2">Last Name</th><th className="py-2">First Name</th><th className="py-2">Middle Name</th>
+                            <th className="py-2">Service</th><th className="py-2">Status</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  </div>
-                </>
-              )}
-            </>
-          )}
+                        </thead>
+                        <tbody style={{ fontSize: 12 }}>
+                          {v.appts.map((a) => (
+                            <tr key={a.id} onClick={() => setViewAppt(a)} style={{ cursor: 'pointer' }} title="View appointment details">
+                              <td className="px-3 py-2" style={{ color: '#047857', fontWeight: 700, fontFamily: 'ui-monospace, Consolas, monospace', fontSize: 11 }}>{appointmentCode(a)}</td>
+                              <td className="py-2" style={{ color: '#6b7280', whiteSpace: 'nowrap' }}>{a.date}</td>
+                              <td className="py-2" style={{ color: '#111827', fontWeight: 600 }}>{nameColumns(a.name)[0]}</td><td className="py-2" style={{ color: '#111827' }}>{nameColumns(a.name)[1]}</td><td className="py-2" style={{ color: '#6b7280' }}>{nameColumns(a.name)[2]}</td>
+                              <td className="py-2" style={{ color: '#6b7280' }}>{a.service}</td>
+                              <td className="py-2"><StatusBadge status={a.status} /></td>
+                            </tr>
+                          ))}
+                          {!v.appts.length && <tr><td colSpan={7} className="text-center py-3" style={{ color: '#9ca3af' }}>No appointments match the selected filters.</td></tr>}
+                        </tbody>
+                      </Table>
+                    </div>
+                  </Panel>
+                )}
+                {v.kind !== 'appointments' && (
+                  <Panel className="mb-0">
+                    <SectionTitle num={num()} right={<span style={{ fontSize: 11, color: '#94a3b8' }}>Click a row to open the record</span>}>
+                      List of Health Records ({v.hrs.length})
+                    </SectionTitle>
+                    <div className="table-responsive" style={{ maxHeight: 280, overflowY: 'auto' }}>
+                      <Table hover size="sm" className="mb-0 align-middle">
+                        <thead style={{ backgroundColor: '#f9fafb', position: 'sticky', top: 0 }}>
+                          <tr style={{ fontSize: 10, color: '#6b7280', textTransform: 'uppercase' }}>
+                            <th className="px-3 py-2">Record No.</th><th className="py-2">Date</th><th className="py-2">Last Name</th><th className="py-2">First Name</th><th className="py-2">Middle Name</th>
+                            <th className="py-2">Type</th><th className="py-2">Diagnosis</th><th className="py-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody style={{ fontSize: 12 }}>
+                          {v.hrs.map((r) => (
+                            <tr key={r.id} onClick={() => openHealthRecord(r.id)} style={{ cursor: 'pointer' }} title="Open health record">
+                              <td className="px-3 py-2" style={{ color: '#047857', fontWeight: 700, fontFamily: 'ui-monospace, Consolas, monospace', fontSize: 11 }}>{healthRecordCode(r)}</td>
+                              <td className="py-2" style={{ color: '#6b7280', whiteSpace: 'nowrap' }}>{r.date}</td>
+                              <td className="py-2" style={{ color: '#111827', fontWeight: 600 }}>{nameColumns(r.patient)[0]}</td><td className="py-2" style={{ color: '#111827' }}>{nameColumns(r.patient)[1]}</td><td className="py-2" style={{ color: '#6b7280' }}>{nameColumns(r.patient)[2]}</td>
+                              <td className="py-2" style={{ color: '#6b7280' }}>{r.type}</td>
+                              <td className="py-2" style={{ color: '#374151', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.diagnosis}</td>
+                              <td className="py-2"><StatusBadge status={r.status} /></td>
+                            </tr>
+                          ))}
+                          {!v.hrs.length && <tr><td colSpan={8} className="text-center py-3" style={{ color: '#9ca3af' }}>No health records match the selected filters.</td></tr>}
+                        </tbody>
+                      </Table>
+                    </div>
+                  </Panel>
+                )}
+              </>
+            );
+          })()}
 
           {!rptData && !rptLoading && (
             <div className="d-flex flex-column align-items-center justify-content-center" style={{ height: 200, color: '#9ca3af' }}>
@@ -2222,16 +2229,16 @@ const Reports = () => {
         </Modal.Body>
         <Modal.Footer style={{ borderTop: '1px solid #f1f5f9' }}>
           <Button variant="light" size="sm" onClick={() => setReportModal(null)} className="rounded-3">Close</Button>
-          <Button size="sm" onClick={() => window.print()} variant="outline-secondary" className="rounded-3 d-flex align-items-center gap-1" disabled={!rptData}>
+          <Button size="sm" onClick={printReport} variant="outline-secondary" className="rounded-3 d-flex align-items-center gap-1" disabled={!rptView}>
             <Printer size={14} /> Print
           </Button>
           <Button size="sm" onClick={exportReportPDF}
-            className="rounded-3 d-flex align-items-center gap-1 border-0" disabled={!rptData}
+            className="rounded-3 d-flex align-items-center gap-1 border-0" disabled={!rptView}
             style={{ background: '#dc2626' }}>
             <FileDown size={14} /> PDF
           </Button>
           <Button size="sm" onClick={exportReport}
-            className="rounded-3 d-flex align-items-center gap-1 border-0" disabled={!rptData}
+            className="rounded-3 d-flex align-items-center gap-1 border-0" disabled={!rptView}
             style={{ background: '#0f172a' }}>
             <FileSpreadsheet size={14} /> Excel
           </Button>
@@ -2250,7 +2257,7 @@ const Reports = () => {
           <Modal.Body className="p-4">
             <div className="d-flex align-items-center justify-content-between mb-3">
               <div>
-                <div style={{ fontSize: 17, fontWeight: 700, color: '#0f172a' }}>{viewAppt.name || '—'}</div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: '#0f172a' }}>{formatName(viewAppt.name) || '—'}</div>
                 <div style={{ fontSize: 12, color: '#047857', fontWeight: 700, fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace' }}>{appointmentCode(viewAppt)}</div>
               </div>
               <StatusBadge status={viewAppt.status} />
