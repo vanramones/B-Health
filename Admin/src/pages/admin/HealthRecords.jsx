@@ -6,7 +6,7 @@ import { supabase } from '../../config/supabase';
 import { Card, Row, Col, Form, InputGroup, Button, Table, Modal } from 'react-bootstrap';
 import {
   Search, Plus, Eye, Edit3, Trash2, FileText, Activity, Stethoscope, Pill, ClipboardList,
-  Calendar, User, Clock, ChevronDown, Printer, FileDown,
+  Calendar, User, Clock, ChevronDown, Printer, FileDown, CheckCircle2,
 } from 'lucide-react';
 import { downloadHealthRecordPdf, printHealthRecordPdf } from '../../utils/healthRecordPdf';
 import { healthRecordCode } from '../../utils/recordCodes';
@@ -49,6 +49,18 @@ const TypePill = ({ type }) => {
   );
 };
 
+const FOLLOWUP_TAG = '[FOLLOW-UP]';
+const isoInDays = (days) => {
+  const d = new Date(); d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+const followUpNote = (date) => {
+  const when = new Date(`${date}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  return `${FOLLOWUP_TAG} Please return to the Barangay Health Center on ${when} for your follow-up check-up. Bring this record and any medicines or lab results.`;
+};
+const stripFollowUp = (notes) => String(notes || '').split('\n').filter((l) => !l.startsWith(FOLLOWUP_TAG)).join('\n').trim();
+const withFollowUp = (notes, date) => [followUpNote(date), stripFollowUp(notes)].filter(Boolean).join('\n\n');
+
 const emptyForm = { patient: '', type: 'Consultation', diagnosis: '', doctor: '', date: '', notes: '', status: 'ongoing' };
 
 const HealthRecords = () => {
@@ -59,8 +71,10 @@ const HealthRecords = () => {
   const [editingId, setEditingId]     = useState(null);
   const [showView, setShowView]       = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmComplete, setConfirmComplete] = useState(null);
   const [form, setForm]               = useState(emptyForm);
   const [formError, setFormError]     = useState('');
+  const [followUpDate, setFollowUpDate] = useState(isoInDays(7));
   const [users, setUsers]             = useState([]);
   const [userSearch, setUserSearch]   = useState('');
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -124,8 +138,17 @@ const HealthRecords = () => {
     });
   }, [items, filter, query]);
 
-  const openAdd = () => { setEditingId(null); setForm({ ...emptyForm, date: new Date().toISOString().slice(0, 10) }); setShowForm(true); };
-  const openEdit = (r) => { setEditingId(r.id); setForm({ ...r }); setShowForm(true); };
+  const openAdd = () => { setEditingId(null); setFollowUpDate(isoInDays(7)); setForm({ ...emptyForm, date: new Date().toISOString().slice(0, 10) }); setShowForm(true); };
+  const openEdit = (r) => { setEditingId(r.id); setFollowUpDate(isoInDays(7)); setForm({ ...r }); setShowForm(true); };
+
+  const changeStatus = (status) => setForm((f) => ({
+    ...f, status,
+    notes: status === 'follow-up' ? withFollowUp(f.notes, followUpDate) : stripFollowUp(f.notes),
+  }));
+  const changeFollowUpDate = (date) => {
+    setFollowUpDate(date);
+    if (date) setForm((f) => ({ ...f, notes: withFollowUp(f.notes, date) }));
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -144,6 +167,13 @@ const HealthRecords = () => {
 
   const handleDelete = async () => {
     if (confirmDelete) { await deleteItem(confirmDelete.id); setConfirmDelete(null); }
+  };
+
+  const handleComplete = async () => {
+    if (confirmComplete) {
+      await updateItem(confirmComplete.id, { ...confirmComplete, status: 'closed' });
+      setConfirmComplete(null); setShowView(null);
+    }
   };
 
   const tabs = [
@@ -241,6 +271,9 @@ const HealthRecords = () => {
                       <div className="d-flex justify-content-end gap-1">
                         <Button size="sm" variant="light" className="border-0 p-1 px-2" onClick={() => setShowView(r)}><Eye size={14} color="#6b7280" /></Button>
                         <Button size="sm" variant="light" className="border-0 p-1 px-2" onClick={() => openEdit(r)}><Edit3 size={14} color="#1d4ed8" /></Button>
+                        {r.status === 'follow-up' && (
+                          <Button size="sm" variant="light" className="border-0 p-1 px-2" title="Mark as Completed" onClick={() => setConfirmComplete(r)}><CheckCircle2 size={14} color="#16a34a" /></Button>
+                        )}
                         <Button size="sm" variant="light" className="border-0 p-1 px-2" onClick={() => setConfirmDelete(r)}><Trash2 size={14} color="#dc2626" /></Button>
                       </div>
                     </td>
@@ -285,6 +318,9 @@ const HealthRecords = () => {
                       <div className="d-flex gap-2 mt-3 pt-2" style={{ borderTop: '1px solid #f3f4f6' }} onClick={(e) => e.stopPropagation()}>
                         <Button size="sm" variant="light" className="flex-grow-1 border-0 d-flex align-items-center justify-content-center gap-1" onClick={() => setShowView(r)} style={{ fontSize: 12 }}><Eye size={13} color="#6b7280" /> View</Button>
                         <Button size="sm" variant="light" className="flex-grow-1 border-0 d-flex align-items-center justify-content-center gap-1" onClick={() => openEdit(r)} style={{ fontSize: 12 }}><Edit3 size={13} color="#1d4ed8" /> Edit</Button>
+                        {r.status === 'follow-up' && (
+                          <Button size="sm" variant="light" className="flex-grow-1 border-0 d-flex align-items-center justify-content-center gap-1" onClick={() => setConfirmComplete(r)} style={{ fontSize: 12 }}><CheckCircle2 size={13} color="#16a34a" /> Complete</Button>
+                        )}
                         <Button size="sm" variant="light" className="flex-grow-1 border-0 d-flex align-items-center justify-content-center gap-1" onClick={() => setConfirmDelete(r)} style={{ fontSize: 12 }}><Trash2 size={13} color="#dc2626" /> Delete</Button>
                       </div>
                     </Card.Body>
@@ -341,7 +377,7 @@ const HealthRecords = () => {
               </Col>
               <Col xs={6}>
                 <Form.Label style={{ fontSize: 12, fontWeight: 600 }}>Status</Form.Label>
-                <Form.Select size="sm" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                <Form.Select size="sm" value={form.status} onChange={(e) => changeStatus(e.target.value)}>
                   <option value="ongoing">Ongoing</option><option value="follow-up">Follow-up</option><option value="closed">Closed</option>
                 </Form.Select>
               </Col>
@@ -360,6 +396,15 @@ const HealthRecords = () => {
                 <Form.Control type="date" size="sm" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} required />
               </Col>
             </Row>
+            {form.status === 'follow-up' && (
+              <div className="mb-3 p-2 rounded-3" style={{ background: '#fff7ed', border: '1px solid #fed7aa' }}>
+                <Form.Label style={{ fontSize: 12, fontWeight: 600, color: '#9a3412' }}>Follow-up Date</Form.Label>
+                <Form.Control type="date" size="sm" value={followUpDate} min={isoInDays(0)} onChange={(e) => changeFollowUpDate(e.target.value)} />
+                <div style={{ fontSize: 11, color: '#9a3412', marginTop: 4 }}>
+                  A follow-up note is added to Notes automatically. The patient is notified when you save.
+                </div>
+              </div>
+            )}
             <Form.Group>
               <Form.Label style={{ fontSize: 12, fontWeight: 600 }}>Notes</Form.Label>
               <Form.Control as="textarea" rows={3} size="sm" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
@@ -508,6 +553,11 @@ const HealthRecords = () => {
         )}
         <Modal.Footer className="justify-content-between p-3" style={{ borderTop: '1px solid #f1f5f9' }}>
           <div className="d-flex gap-2">
+            {showView?.status === 'follow-up' && (
+              <Button size="sm" className="d-flex align-items-center gap-1 border-0" style={{ backgroundColor: '#16a34a' }} onClick={() => setConfirmComplete(showView)}>
+                <CheckCircle2 size={14} /> Complete
+              </Button>
+            )}
             <Button size="sm" variant="light" className="d-flex align-items-center gap-1 border" onClick={() => { setShowView(null); openEdit(showView); }}>
               <Edit3 size={14} /> Edit
             </Button>
@@ -524,6 +574,18 @@ const HealthRecords = () => {
             </Button>
             <Button size="sm" variant="secondary" onClick={() => setShowView(null)}>Close</Button>
           </div>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Complete Follow-up Confirm */}
+      <Modal show={!!confirmComplete} onHide={() => setConfirmComplete(null)} centered size="sm">
+        <Modal.Header closeButton><Modal.Title style={{ fontSize: 15 }}>Mark as Completed?</Modal.Title></Modal.Header>
+        <Modal.Body style={{ fontSize: 13 }}>
+          Mark the follow-up record for <strong>{confirmComplete?.patient}</strong> as completed? The status will change to <strong>Closed</strong> and the patient will be notified.
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="light" size="sm" onClick={() => setConfirmComplete(null)}>Cancel</Button>
+          <Button size="sm" className="border-0" style={{ backgroundColor: '#16a34a' }} onClick={handleComplete}>Yes, Completed</Button>
         </Modal.Footer>
       </Modal>
 

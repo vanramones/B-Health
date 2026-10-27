@@ -5,7 +5,7 @@ import { userApi } from '../../context/UserAuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   Calendar, FileText, Heart, ChevronRight,
-  Phone, Activity, Megaphone, Clock, User,
+  Phone, Activity, Megaphone, Clock, User, Stethoscope,
 } from 'lucide-react';
 
 
@@ -116,6 +116,7 @@ const UserDashboard = () => {
   const [apptLoading, setApptLoading] = useState(true);
   const [announcements, setAnnouncements] = useState([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
+  const [followUps, setFollowUps] = useState([]);
 
   useEffect(() => {
     // Fetch announcements (public - available for all users)
@@ -130,6 +131,10 @@ const UserDashboard = () => {
         .then((data) => setAppointments(Array.isArray(data) ? data.slice(0, 3) : []))
         .catch(() => setAppointments([]))
         .finally(() => setApptLoading(false));
+
+      userApi.get('/user/health-records')
+        .then((data) => setFollowUps((Array.isArray(data) ? data : []).filter((r) => r.status === 'follow-up')))
+        .catch(() => setFollowUps([]));
     } else {
       // Guest user - no appointments
       setApptLoading(false);
@@ -188,6 +193,33 @@ const UserDashboard = () => {
         </div>
 
       </div>
+
+      {/* ── Follow-up Required Banner ── */}
+      {currentUser && followUps.map((r) => {
+        const note = (r.notes || '').split('\n').find((l) => l.includes('[FOLLOW-UP]'))?.replace('[FOLLOW-UP]', '').trim()
+          || 'Please return to the Barangay Health Center for your follow-up check-up.';
+        return (
+          <div key={`fu-${r.id}`} onClick={() => navigate('/user/health-records')} style={{
+            background: 'linear-gradient(135deg, #ea580c, #f97316)',
+            borderRadius: 16, padding: '14px 16px', marginBottom: 14,
+            display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer',
+            boxShadow: '0 4px 14px rgba(234,88,12,0.3)',
+          }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 12, flexShrink: 0,
+              background: 'rgba(255,255,255,0.2)', display: 'flex',
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Stethoscope size={21} color="#fff" />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>Follow-up Required</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.92)', marginTop: 2, lineHeight: 1.4 }}>{note}</div>
+            </div>
+            <ChevronRight size={18} color="rgba(255,255,255,0.85)" style={{ flexShrink: 0 }} />
+          </div>
+        );
+      })}
 
       {/* ── Guest Sign In Banner ── */}
       {!currentUser && (

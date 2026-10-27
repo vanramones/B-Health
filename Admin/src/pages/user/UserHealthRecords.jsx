@@ -69,9 +69,30 @@ const UserHealthRecords = () => {
 
   // Filter notifications for health records
   const healthRecordNotifications = notifications.filter((n) => n.type === 'health_record');
+  const followUps = records.filter((r) => r.status === 'follow-up');
+  const followUpNote = (r) =>
+    (r.notes || '').split('\n').find((l) => l.includes('[FOLLOW-UP]'))?.replace('[FOLLOW-UP]', '').trim() || 'Please return to the Barangay Health Center for your follow-up check-up.';
 
   return (
     <div>
+      {/* Follow-up Required Banner */}
+      {followUps.map((r) => (
+        <Card key={`fu-${r.id}`} className="border-0 rounded-4 mb-3" onClick={() => setShowView(r)}
+          style={{ background: 'linear-gradient(135deg, #ea580c, #f97316)', boxShadow: '0 4px 14px rgba(234,88,12,0.3)', cursor: 'pointer' }}>
+          <Card.Body className="p-3 d-flex align-items-center gap-3">
+            <div className="d-flex align-items-center justify-content-center rounded-3 flex-shrink-0"
+              style={{ width: 40, height: 40, backgroundColor: 'rgba(255,255,255,0.2)' }}>
+              <Stethoscope size={20} color="#fff" />
+            </div>
+            <div className="flex-grow-1" style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>Follow-up Required</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.92)', marginTop: 2 }}>{followUpNote(r)}</div>
+            </div>
+            <Eye size={18} color="rgba(255,255,255,0.85)" className="flex-shrink-0" />
+          </Card.Body>
+        </Card>
+      ))}
+
       {/* Notifications Alert */}
       {healthRecordNotifications.length > 0 && (
         <Card className="border rounded-4 mb-4" style={{ 
@@ -206,6 +227,9 @@ const UserHealthRecords = () => {
                             <Badge style={{ backgroundColor: tc.bg, color: tc.color, fontSize: 10 }}>
                               {record.type}
                             </Badge>
+                            {record.status === 'follow-up' && (
+                              <Badge style={{ backgroundColor: '#ffedd5', color: '#c2410c', fontSize: 10 }}>Follow-up</Badge>
+                            )}
                             {record.prescription && (
                               <Badge style={{ backgroundColor: '#fef3c7', color: '#b45309', fontSize: 10 }}>
                                 <Pill size={10} className="me-1" /> {t('hasPrescription')}
@@ -266,6 +290,9 @@ const UserHealthRecords = () => {
                       <Badge style={{ backgroundColor: tc.bg, color: tc.color, fontSize: 11 }}>
                         {tc.icon} {showView.type}
                       </Badge>
+                      {showView.status === 'follow-up' && (
+                        <Badge style={{ backgroundColor: '#ffedd5', color: '#c2410c', fontSize: 11 }}>Follow-up</Badge>
+                      )}
                       {showView.prescription && (
                         <Badge style={{ backgroundColor: '#fef3c7', color: '#b45309', fontSize: 11 }}>
                           <Pill size={12} className="me-1" /> {t('hasPrescription')}

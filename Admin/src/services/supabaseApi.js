@@ -552,6 +552,51 @@ async function route(method, rawPath, body = {}) {
     }
     return res;
   }
+  // health-records edit -> notify the patient (follow-up gets its own high-priority alert)
+  if (seg[0] === 'health-records' && seg[1] && !seg[2] && method === 'PUT') {
+    const { data: before } = await supabase.from('health_records')
+      .select('status, notes, patient, type').eq('id', seg[1]).limit(1).maybeSingle();
+    const res = await update(cfg, seg[1], body);
+    const patient = body.patient || before?.patient;
+    const { data: users } = patient
+      ? await supabase.from('users').select('id').eq('full_name', patient).limit(1)
+      : { data: [] };
+    const targetUserId = users && users.length ? users[0].id : null;
+    if (targetUserId) {
+      const type = body.type || before?.type || 'health';
+      const isFollowUp = body.status === 'follow-up';
+      const becameFollowUp = isFollowUp && before?.status !== 'follow-up';
+      const completedFollowUp = before?.status === 'follow-up' && body.status === 'closed';
+      const notesChanged = (body.notes || '') !== (before?.notes || '');
+      if (!isFollowUp || becameFollowUp || notesChanged) {
+        const note = String(body.notes || '').trim();
+        const title = isFollowUp ? `Follow-up Required: ${type}` : completedFollowUp ? `Follow-up Completed: ${type}` : `Health Record Updated: ${type}`;
+        const message = isFollowUp
+          ? `Your ${String(type).toLowerCase()} record has been marked for follow-up.${note ? ` Note: ${note}` : ''}`
+          : completedFollowUp
+            ? `Your follow-up visit for your ${String(type).toLowerCase()} record is complete. Thank you for returning to the Barangay Health Center.`
+            : `Your ${String(type).toLowerCase()} health record was updated by the health center.`;
+        await supabase.from('notifications').insert({
+          type: 'health_record', title, message, recipient: patient,
+          priority: isFollowUp ? 'high' : 'normal',
+        });
+        supabase.functions.invoke('send-push', {
+          body: {
+            user_id: targetUserId,
+            title: isFollowUp ? '🩺 Follow-up Required' : completedFollowUp ? '✅ Follow-up Completed' : '📄 Health Record Updated',
+            body: isFollowUp
+              ? `Your ${type} record needs a follow-up visit.${note ? ` ${note.slice(0, 120)}` : ''}`
+              : completedFollowUp
+                ? 'Your follow-up visit is complete. Thank you for returning!'
+                : `Your ${type} record was updated. Tap to view.`,
+            route: '/user/health-records',
+          },
+        }).catch((e) => console.warn('[push] health record send-push failed:', e?.message || e));
+      }
+    }
+    return res;
+  }
+
   // announcement create -> broadcast an FCM push to ALL users (published only)
   if (seg[0] === 'announcements' && !seg[1] && method === 'POST') {
     const res = await create(cfg, body);
@@ -589,7 +634,7 @@ async function buildUserNotifications(uid, fullName) {
   // ── 1. Direct notifications for this user (reschedule, health records, etc.) ──
   // Use recipient = fullName because the notifications table stores the patient name, not user_id
   const { data: directNotifs = [] } = await supabase.from('notifications')
-    .select('id, type, title, message, is_read, created_at, route, recipient')
+    .select('id, type, title, message, is_read, created_at, recipient')
     .eq('recipient', fullName)
     .not('recipient', 'eq', 'All Staff')
     .order('created_at', { ascending: false })
@@ -602,7 +647,7 @@ async function buildUserNotifications(uid, fullName) {
     title: n.title || 'Notification',
     message: n.message || '',
     timestamp: n.created_at,
-    navigateTo: n.route || '/user/appointments',
+    navigateTo: n.type === 'health_record' ? '/user/health-records' : '/user/appointments',
     isRead: n.is_read,
   }));
 
